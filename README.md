@@ -33,8 +33,9 @@ install.packages(c("AzureStor", "arrow", "DBI", "httr", "jsonlite"))
 install.packages("duckdb")   # optional — for SQL queries
 install.packages("remotes")
 
-# If "destination file exists" (stale package), run:
+# IMPORTANT: Restart R before installing, or run:
 # remove.packages("fabriconnect")
+# (R will refuse to overwrite a loaded package)
 
 remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect",
                         upgrade = "always", force = TRUE)
@@ -151,7 +152,7 @@ lh = FabricLakehouse(
 |----------|---|--------|
 | **Column pruning** | `read_table(conn, "table", columns = c("col1", "col2"))` | `lh.to_pandas("table", columns=["col1", "col2"])` |
 | **SQL column pruning** | `query_tables(conn, sql, table_columns = list(...))` | `lh.sql(query, table_columns={...})` |
-| **Disk usage** | Downloads parquet files to temp dir, cleaned each run | Reads directly from OneLake (no disk) |
+| **Disk usage** | In-memory via `download_blob(dest=NULL)`; falls back to unique tempfile + auto-delete | Reads directly from OneLake (no disk) |
 | **Memory** | Full table loaded into R's memory | Full table loaded into Python memory |
 | **Temp file cleanup** | Automatic — `unlink()` before each `read_table()` call | No temp files |
 

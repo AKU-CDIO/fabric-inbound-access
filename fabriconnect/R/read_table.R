@@ -33,13 +33,29 @@ read_table <- function(conn, table_name, columns = NULL) {
     stop("No parquet files found for table '", table_name, "'")
   }
 
-  # Download directly into memory (no disk writes)
+  # Download directly into memory (no disk writes).
+  # Falls back to unique tempfile + overwrite for older AzureStor versions
+  # that don't support dest = NULL.
   tbls <- lapply(parquet_files, function(f) {
-    raw_data <- download_blob(conn$fs, f, NULL)
-    if (!is.null(columns)) {
-      arrow::read_parquet(raw_data, col_select = columns)
+    raw_data <- tryCatch(
+      download_blob(conn$fs, f, NULL),
+      error = function(e) NULL
+    )
+    if (!is.null(raw_data)) {
+      if (!is.null(columns)) {
+        arrow::read_parquet(raw_data, col_select = columns)
+      } else {
+        arrow::read_parquet(raw_data)
+      }
     } else {
-      arrow::read_parquet(raw_data)
+      tmp <- tempfile(fileext = ".parquet")
+      on.exit(unlink(tmp), add = TRUE)
+      download_blob(conn$fs, f, tmp, overwrite = TRUE)
+      if (!is.null(columns)) {
+        arrow::read_parquet(tmp, col_select = columns)
+      } else {
+        arrow::read_parquet(tmp)
+      }
     }
   })
 
