@@ -1,83 +1,80 @@
-# fabriconnect — R package
+# fabriconnect — R package for Microsoft Fabric Lakehouse
 
-Read Delta tables from Microsoft Fabric Lakehouses via OneLake HTTPS. Works through restricted IP firewalls that block TDS (1433).
-
-## Azure login (device code)
-
-```bash
-az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
-```
+Read Fabric Lakehouse data over HTTPS (port 443). No TDS (port 1433) needed.
 
 ## Install
 
-**From command line (fresh R process — no DLL lock issues):**
-```bash
-Rscript -e "remotes::install_github('AKU-CDIO/fabric-inbound-access', subdir = 'fabriconnect', force = TRUE, upgrade_dependencies = FALSE)"
+```r
+remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect", force = TRUE, upgrade_dependencies = FALSE)
 ```
 
-**From within R (if package is already working):**
+## Update
+
+Restart R first, then run the install command again. Or:
+
 ```r
 library(fabriconnect)
 update_fabriconnect()
 ```
 
-Installs all deps (`arrow`, `DBI`, `httr`, `jsonlite`). `duckdb` is optional for SQL.
-
-
-## Functions
-
-| Function | Description |
-|----------|-------------|
-| `connect_to_fabric()` | Authenticate and return a connection object |
-| `list_tables(conn)` | List all user tables in the Lakehouse |
-| `read_table(conn, name, columns = NULL)` | Read a table as data.frame (columns prunes large tables) |
-| `query_tables(conn, sql, table_columns = NULL)` | Run SQL across tables via DuckDB |
-| `list_lakehouses()` | Discover all Lakehouses in the workspace |
-
-## Usage
+## Connect
 
 ```r
 library(fabriconnect)
+
+# Default Lakehouse (uzima_db_backup)
 conn <- connect_to_fabric()
 
-# Read all columns
-df <- read_table(conn, "dimenrolledparticipants")
+# Or connect by name
+conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
+```
 
-# Read only needed columns (less network/memory)
-df <- read_table(conn, "factfitbitsleeplogs",
-                 columns = c("ParticipantKey", "MinutesAsleep"))
+## List tables
 
-# SQL with column pruning for large tables
-result <- query_tables(conn, "
-    SELECT p.ParticipantIdentifier, count(s.Skey) AS n
-    FROM dimenrolledparticipants p
-    JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
-    GROUP BY p.ParticipantIdentifier",
+```r
+list_tables(conn)
+```
+
+## Read data
+
+```r
+# All columns
+read_table(conn, "dimenrolledparticipants")
+
+# Specific columns (less transfer)
+read_table(conn, "dimenrolledparticipants",
+           columns = c("ParticipantIdentifier", "Gender"))
+```
+
+## SQL with DuckDB (optional)
+
+```r
+query_tables(conn, "SELECT count(*) FROM dimenrolledparticipants")
+
+# JOIN with column pruning
+query_tables(conn, "
+  SELECT p.ParticipantIdentifier, count(s.Skey) AS n
+  FROM dimenrolledparticipants p
+  JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
+  GROUP BY p.ParticipantIdentifier",
   table_columns = list(
     dimenrolledparticipants = c("Skey", "ParticipantIdentifier"),
     factfitbitsleeplogs     = c("Skey", "ParticipantKey")
   ))
-
-# Discover and connect by name
-lakes <- list_lakehouses()
-conn2 <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
 ```
 
-## Configuration
-
-IDs are in `inst/config.json` and loaded automatically. Override:
+## All Lakehouses
 
 ```r
-conn <- connect_to_fabric(
-    workspace_id   = "your-workspace-guid",
-    lakehouse_id   = "your-lakehouse-guid",
-    lakehouse      = "HCW_fitbit_data",
-    fabric_tenant  = "your-tenant-id"
-)
+list_lakehouses()
 ```
 
-## Large tables
+## Override defaults
 
-- Use `columns =` to select only the columns you need — data is pruned at the parquet level
-- Temp files are deleted before each `read_table()` call (no accumulation)
-- For >100 GB prefer Python's `deltalake` which reads directly from OneLake (no disk)
+```r
+connect_to_fabric(
+  workspace_id  = "your-workspace-guid",
+  lakehouse     = "HCW_fitbit_data",
+  fabric_tenant = "your-tenant-id"
+)
+```
