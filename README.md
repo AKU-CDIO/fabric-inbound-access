@@ -134,6 +134,36 @@ result <- query_tables(conn, "
   ))
 ```
 
+### Cross-lakehouse queries
+
+Join tables across different Lakehouses by passing a named list of connections. Tables are referenced with a schema prefix in the SQL:
+
+```r
+conn1 <- connect_to_fabric(lakehouse = "uzima_db_backup")
+conn2 <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
+
+result <- query_tables(
+  list(uzima = conn1, hcw = conn2),
+  "SELECT p.ParticipantIdentifier, f.ActivityDate, f.Steps
+   FROM uzima.dimenrolledparticipants p
+   JOIN hcw.fitbitdailydata f
+     ON p.ParticipantIdentifier = f.ParticipantIdentifier
+   LIMIT 10")
+```
+
+```python
+lh1 = FabricLakehouse(lakehouse="uzima_db_backup")
+lh2 = FabricLakehouse(lakehouse="HCW_fitbit_data")
+
+result = FabricLakehouse.cross_query(
+  {"uzima": lh1, "hcw": lh2},
+  "SELECT p.ParticipantIdentifier, f.ActivityDate, f.Steps
+   FROM uzima.dimenrolledparticipants p
+   JOIN hcw.fitbitdailydata f
+     ON p.ParticipantIdentifier = f.ParticipantIdentifier
+   LIMIT 10")
+```
+
 ### Demographics summary
 
 ```r

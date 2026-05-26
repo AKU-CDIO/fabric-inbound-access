@@ -171,6 +171,61 @@ class FabricLakehouse:
         return result.fetchdf()
 
     @staticmethod
+    def cross_query(connections, query, table_columns=None):
+        """Run a SQL query across multiple Lakehouses.
+
+        Parameters
+        ----------
+        connections : dict of str -> FabricLakehouse
+            Named connections, e.g. ``{"uzima": lh1, "hcw": lh2}``.
+            Use names as schema prefixes in the query, e.g.
+            ``"SELECT ... FROM uzima.dimenrolledparticipants JOIN hcw.fitbitdailydata"``.
+        query : str
+            SQL query with schema-prefixed table names.
+        table_columns : dict of str -> list of str, optional
+            Column pruning per qualified table name, e.g.
+            ``{"uzima.dimenrolledparticipants": ["col1", "col2"]}``.
+
+        Returns
+        -------
+        pandas.DataFrame
+        """
+        import duckdb
+        import re
+        con = duckdb.connect()
+        tables = set()
+        for kw in ("FROM", "JOIN"):
+            for m in re.finditer(rf"\b{kw}\s+([\w.]+)", query, re.IGNORECASE):
+                tables.add(m.group(1))
+        for tbl_ref in tables:
+            if "." in tbl_ref:
+                schema, tbl = tbl_ref.split(".", 1)
+            else:
+                schema = None
+                tbl = tbl_ref
+            if len(connections) > 1 and schema is None:
+                raise ValueError(
+                    f"Table '{tbl_ref}' is not schema-qualified. "
+                    "Use schema.tablename syntax for cross-lakehouse queries."
+                )
+            lh = connections.get(schema) if schema else list(connections.values())[0]
+            if lh is None:
+                raise ValueError(
+                    f"No connection named '{schema}'. Available: {list(connections.keys())}"
+                )
+            cols = (table_columns or {}).get(tbl_ref)
+            df = lh.to_pandas(tbl, columns=cols)
+            if schema:
+                safe_name = f"__{schema}__{tbl}"
+                con.register(safe_name, df)
+                con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+                con.execute(f'CREATE OR REPLACE VIEW "{schema}"."{tbl}" AS SELECT * FROM "{safe_name}"')
+            else:
+                con.register(tbl, df)
+        result = con.execute(query)
+        return result.fetchdf()
+
+    @staticmethod
     def list_lakehouses(workspace_guid=None, fabric_tenant=None, az_cmd=None):
         """Discover all Lakehouses in the workspace via Fabric REST API.
 
