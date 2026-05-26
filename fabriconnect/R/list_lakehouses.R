@@ -2,6 +2,7 @@
 #'
 #' Calls the Fabric REST API to discover all Lakehouse items. Returns
 #' their display names and GUIDs so you can connect to any of them.
+#' Defaults are read from the bundled configuration file.
 #'
 #' @param workspace_id  Character. The Fabric workspace GUID.
 #' @param fabric_tenant Character. The Fabric tenant ID.
@@ -16,9 +17,12 @@
 #' }
 #' @export
 list_lakehouses <- function(
-  workspace_id  = "67f69cc9-00c9-4c9c-a85b-38fc30774b7b",
-  fabric_tenant = "a5d4252a-02f9-4e60-96f0-9733baae4919"
+  workspace_id  = NULL,
+  fabric_tenant = NULL
 ) {
+  cfg <- .load_config()
+  if (is.null(workspace_id))  workspace_id  <- cfg$workspace_guid
+  if (is.null(fabric_tenant)) fabric_tenant <- cfg$fabric_tenant
   token <- system(
     paste("az.cmd account get-access-token",
           "--resource https://api.fabric.microsoft.com",

@@ -1,12 +1,17 @@
 # fabriconnect — R package
 
-Read Delta tables from Microsoft Fabric Lakehouses via the OneLake HTTPS API.
-Supports listing, reading, and SQL queries via DuckDB.
+Read Delta tables from Microsoft Fabric Lakehouses via OneLake HTTPS. Works through restricted IP firewalls that block TDS (1433).
 
-## Install (from GitHub)
+## Azure login (device code)
+
+```bash
+az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
+```
+
+## Install
 
 ```r
-install.packages(c("AzureStor", "arrow", "DBI", "httr"))
+install.packages(c("AzureStor", "arrow", "DBI", "httr", "jsonlite"))
 install.packages("duckdb")   # optional — for SQL queries
 install.packages("remotes")
 remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect")
@@ -45,9 +50,13 @@ result <- query_tables(conn, "
 # Discover all Lakehouses
 lakes <- list_lakehouses()
 print(lakes)
+# Connect to a different Lakehouse
+conn2 <- connect_to_fabric(lakehouse_id = lakes$id[2])
 ```
 
 ## Configuration
+
+IDs are in `inst/config.json` and loaded automatically. Override:
 
 ```r
 conn <- connect_to_fabric(
@@ -56,12 +65,3 @@ conn <- connect_to_fabric(
     fabric_tenant = "your-tenant-id"
 )
 ```
-
-## How it works
-
-1. Calls `az.cmd` to get an OAuth2 token for `https://storage.azure.com`
-2. Uses `AzureStor` to connect to OneLake's ADLS Gen2 endpoint
-3. Downloads parquet files and reads them with `arrow::read_parquet()`
-4. For SQL: loads tables into DuckDB in-memory
-
-No ODBC/TDS needed — all traffic is HTTPS (port 443).

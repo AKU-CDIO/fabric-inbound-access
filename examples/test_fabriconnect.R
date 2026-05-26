@@ -3,19 +3,20 @@
 # No ODBC/TDS needed -- all traffic is HTTPS (port 443).
 #
 # Prerequisites:
-#   - R packages: fabriconnect, duckdb
-#   - Azure CLI logged in: az login
-#   - Access to the Fabric workspace (IP firewall or public)
+#   1. Azure login: az login --tenant a5d4252a-... --use-device-code
+#   2. R packages: fabriconnect, duckdb (optional for SQL)
+#   3. Access to the Fabric workspace (IP firewall or public)
 
 # ---- 1. Install fabriconnect (run once) ----
-# In terminal: R CMD INSTALL fabriconnect/
-# Or in R:
-# install.packages("fabriconnect/", repos = NULL, type = "source")
+# In R:
+# install.packages(c("AzureStor", "arrow", "DBI", "httr", "jsonlite"))
+# install.packages("remotes")
+# remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect")
 
 # ---- 2. Load ----
 library(fabriconnect)
 
-# ---- 3. Connect to Lakehouse ----
+# ---- 3. Connect to Lakehouse (IDs from bundled config.json) ----
 conn <- connect_to_fabric()
 
 # ---- 4. List tables ----
@@ -60,19 +61,24 @@ demo <- query_tables(conn, "
 cat("\nDemographics:\n")
 print(demo)
 
-# ---- 8. Where does this work? ----
+# ---- 8. Discover all Lakehouses ----
+lakes <- list_lakehouses()
+cat("\nLakehouses in workspace:\n")
+print(lakes)
+
+# ---- 9. Connect to a different Lakehouse ----
+# conn2 <- connect_to_fabric(lakehouse_id = lakes$id[2])
+
+# ---- 10. Where does this work? ----
 cat("\n--- About access scope ---\n")
 cat("This script works from ANY machine where:\n")
-cat("  1. Azure CLI is installed and logged in (az login)\n")
+cat("  1. Azure CLI is installed and logged in (az login --use-device-code)\n")
 cat("  2. The user has access to the Fabric workspace\n")
 cat("  3. The machine's IP is in the workspace firewall allowlist\n")
 cat("    (or the workspace is set to 'Public (all)')\n")
 cat("\nIf the IP firewall is 'Selected networks' with only this VM's IP,\n")
 cat("then these packages will NOT work from other machines.\n")
 cat("If set to 'Public (all)', they work from anywhere with valid login.\n")
-cat("\nThe OneLake endpoints used:\n")
-cat("  - https://onelake.dfs.fabric.microsoft.com (HTTPS/443)\n")
-cat("  - https://onelake.blob.fabric.microsoft.com (HTTPS/443)\n")
-cat("No TDS port 1433 is required.\n")
+cat("\nAll traffic is HTTPS (443). No TDS port 1433 required.\n")
 
 cat("\nDone.\n")

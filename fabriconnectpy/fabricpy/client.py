@@ -1,23 +1,33 @@
 import subprocess
 import json
 import urllib.request
+import os
+
+_CONFIG = None
+
+def _load_config():
+    global _CONFIG
+    if _CONFIG is not None:
+        return _CONFIG
+    path = os.path.join(os.path.dirname(__file__), "config.json")
+    with open(path) as f:
+        _CONFIG = json.load(f)
+    return _CONFIG
 
 AZ_CMD = "az.cmd"
-FABRIC_TENANT = "a5d4252a-02f9-4e60-96f0-9733baae4919"
-WORKSPACE_GUID = "67f69cc9-00c9-4c9c-a85b-38fc30774b7b"
-WORKSPACE_NAME = "cdiofabric"
-LAKEHOUSE_GUID = "67596566-8ea9-4fd6-a451-ca9654aa4f10"
-LAKEHOUSE_NAME = "uzima_db_backup"
 STORAGE_RESOURCE = "https://storage.azure.com"
 FABRIC_API_RESOURCE = "https://api.fabric.microsoft.com"
 
 class FabricLakehouse:
     def __init__(self, workspace_guid=None, lakehouse_guid=None,
                  fabric_tenant=None, az_cmd=None):
-        self.workspace_guid = workspace_guid or WORKSPACE_GUID
-        self.lakehouse_guid = lakehouse_guid or LAKEHOUSE_GUID
-        self.fabric_tenant = fabric_tenant or FABRIC_TENANT
+        cfg = _load_config()
+        self.workspace_guid = workspace_guid or cfg["workspace_guid"]
+        self.lakehouse_guid = lakehouse_guid or cfg["lakehouse_guid"]
+        self.fabric_tenant = fabric_tenant or cfg["fabric_tenant"]
         self.az_cmd = az_cmd or AZ_CMD
+        self._workspace_name = cfg["workspace_name"]
+        self._lakehouse_name = cfg["lakehouse_name"]
 
     def _get_token(self):
         result = subprocess.run(
@@ -37,8 +47,8 @@ class FabricLakehouse:
     def list_tables(self):
         token = self._get_token()
         url = (
-            f"https://onelake.dfs.fabric.microsoft.com/{WORKSPACE_NAME}/"
-            f"{LAKEHOUSE_NAME}.Lakehouse/Tables"
+            f"https://onelake.dfs.fabric.microsoft.com/{self._workspace_name}/"
+            f"{self._lakehouse_name}.Lakehouse/Tables"
             f"?recursive=true&maxResults=1000&resource=filesystem"
         )
         req = urllib.request.Request(url, headers={
@@ -110,7 +120,7 @@ class FabricLakehouse:
     def list_lakehouses(workspace_guid=None, fabric_tenant=None, az_cmd=None):
         """Discover all Lakehouses in the workspace via Fabric REST API.
 
-        Returns a list of dicts with keys: name, id, type.
+        Returns a list of dicts with keys: displayName, id.
 
         Parameters
         ----------
@@ -122,8 +132,9 @@ class FabricLakehouse:
         -------
         list[dict]
         """
-        wg = workspace_guid or WORKSPACE_GUID
-        ft = fabric_tenant or FABRIC_TENANT
+        cfg = _load_config()
+        wg = workspace_guid or cfg["workspace_guid"]
+        ft = fabric_tenant or cfg["fabric_tenant"]
         ac = az_cmd or AZ_CMD
         result = subprocess.run(
             f"{ac} account get-access-token "

@@ -1,21 +1,16 @@
 # fabricpy — Python package
 
-Read Delta tables from Microsoft Fabric Lakehouses via the OneLake HTTPS API.
-Supports listing, reading (pyarrow + pandas), and SQL queries via DuckDB.
+Read Delta tables from Microsoft Fabric Lakehouses via OneLake HTTPS. Works through restricted IP firewalls that block TDS (1433).
 
-## Install (from GitHub)
+## Azure login (device code)
 
 ```bash
-# Base install
-pip install git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy
+az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
+```
 
-# With pandas
-pip install "fabricpy[pandas] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
+## Install
 
-# With SQL queries (duckdb)
-pip install "fabricpy[sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
-
-# Full (pandas + SQL)
+```bash
 pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
 ```
 
@@ -50,13 +45,14 @@ df = lh.sql("""
     GROUP BY p.ParticipantIdentifier
 """)
 
-# Discover all Lakehouses in the workspace
+# Discover Lakehouses
 lakes = FabricLakehouse.list_lakehouses()
-for l in lakes:
-    print(f"{l['displayName']}: {l['id']}")
+lh2 = FabricLakehouse(lakehouse_guid=lakes[1]["id"])
 ```
 
 ## Configuration
+
+IDs are in `fabricpy/config.json` and loaded automatically. Override:
 
 ```python
 lh = FabricLakehouse(
@@ -65,11 +61,3 @@ lh = FabricLakehouse(
     fabric_tenant="your-tenant-id"
 )
 ```
-
-## How it works
-
-1. Calls `az.cmd` to get an OAuth2 token for `https://storage.azure.com`
-2. Uses `deltalake` with `bearer_token` + `use_fabric_endpoint=true` to read Delta tables
-3. For SQL: loads tables into DuckDB in-memory
-
-No ODBC/TDS needed — all traffic is HTTPS (port 443).
