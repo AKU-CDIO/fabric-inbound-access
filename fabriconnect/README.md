@@ -3,12 +3,13 @@
 Read Delta tables from Microsoft Fabric Lakehouses via the OneLake HTTPS API.
 Supports listing, reading, and SQL queries via DuckDB.
 
-## Install
+## Install (from GitHub)
 
 ```r
-install.packages(c("AzureStor", "arrow", "DBI"))
+install.packages(c("AzureStor", "arrow", "DBI", "httr"))
 install.packages("duckdb")   # optional — for SQL queries
-install.packages("fabriconnect/", repos = NULL, type = "source")
+install.packages("remotes")
+remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect")
 ```
 
 ## Functions
@@ -19,6 +20,7 @@ install.packages("fabriconnect/", repos = NULL, type = "source")
 | `list_tables(conn)` | List all user tables in the Lakehouse |
 | `read_table(conn, name)` | Read a table as data.frame |
 | `query_tables(conn, sql)` | Run SQL across tables via DuckDB |
+| `list_lakehouses()` | Discover all Lakehouses in the workspace |
 
 ## Usage
 
@@ -39,6 +41,10 @@ result <- query_tables(conn, "
     JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
     GROUP BY p.ParticipantIdentifier
 ")
+
+# Discover all Lakehouses
+lakes <- list_lakehouses()
+print(lakes)
 ```
 
 ## Configuration

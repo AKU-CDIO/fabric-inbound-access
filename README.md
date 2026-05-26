@@ -58,36 +58,34 @@ az login
 
 ## Installation
 
-### R Package
+### R Package (from GitHub)
 
 ```r
 # Install dependencies
-install.packages(c("AzureStor", "arrow", "DBI"))
+install.packages(c("AzureStor", "arrow", "DBI", "httr"))
 
 # Optional: for SQL queries
 install.packages("duckdb")
 
-# Install fabriconnect from source
-install.packages("fabriconnect/", repos = NULL, type = "source")
-
-# Or from the command line:
-# R CMD INSTALL fabriconnect/
+# Install fabriconnect from GitHub
+install.packages("remotes")
+remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect")
 ```
 
-### Python Package
+### Python Package (from GitHub)
 
 ```bash
 # Base install
-pip install ./fabriconnectpy/
+pip install git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy
 
 # With pandas support
-pip install "./fabriconnectpy[pandas]"
+pip install "fabricpy[pandas] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
 
 # With SQL query support (duckdb)
-pip install "./fabriconnectpy[sql]"
+pip install "fabricpy[sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
 
 # Full install
-pip install "./fabriconnectpy[pandas,sql]"
+pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
 ```
 
 ---
@@ -215,7 +213,14 @@ conn <- connect_to_fabric(
 )
 ```
 
-To find your workspace GUID and Lakehouse GUID, use the [Fabric portal](https://app.fabric.microsoft.com) or the [Fabric REST API](https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-type/workspace).
+To discover Lakehouse GUIDs, use `list_lakehouses()`:
+
+```r
+lakes <- list_lakehouses()
+print(lakes)
+```
+
+Or find them via the [Fabric portal](https://app.fabric.microsoft.com).
 
 ---
 
@@ -297,11 +302,19 @@ lh = FabricLakehouse(
 )
 ```
 
+To discover Lakehouse GUIDs, call `list_lakehouses()`:
+
+```python
+lakes = FabricLakehouse.list_lakehouses()
+for l in lakes:
+    print(f"{l['displayName']}: {l['id']}")
+```
+
 ---
 
 ## Which Lakehouse Does It Connect To?
 
-By default, both packages connect to the `uzima_db_backup` Lakehouse in the `cdiofabric` workspace:
+By default, both packages connect to the **`uzima_db_backup`** Lakehouse in the **`cdiofabric`** workspace:
 
 | Parameter | Default GUID | Description |
 |-----------|-------------|-------------|
@@ -309,9 +322,23 @@ By default, both packages connect to the `uzima_db_backup` Lakehouse in the `cdi
 | Lakehouse | `67596566-8ea9-4fd6-a451-ca9654aa4f10` | Lakehouse `uzima_db_backup` |
 | Tenant | `a5d4252a-02f9-4e60-96f0-9733baae4919` | Fabric Microsoft Entra tenant |
 
-Connect to a different Lakehouse by passing the appropriate GUIDs (see [Configuration](#configuration) above).
+### All Lakehouses in the cdiofabric Workspace
 
-### Available Tables (31 user tables)
+The workspace contains **7 Lakehouses**. Connect to any of them by passing the appropriate GUID:
+
+| Lakehouse Name | GUID |
+|----------------|------|
+| `uzima_db_backup` | `67596566-8ea9-4fd6-a451-ca9654aa4f10` |
+| `CDIOUZIMA_Azure_Storage_Accounts_Data` | `7de09c85-b39d-49e4-873d-e683b671448b` |
+| `azu_cdiouzima` | `07d783b9-d533-42f3-a9b7-bc16c18a5376` |
+| `HCW_fitbit_data` | `65058b40-a60c-4267-a882-9263e0ba0617` |
+| `Qualtrics` | `8bb92d0b-3f94-4bd1-94d4-b31b088e9061` |
+| `LS_Fabric_Lakehouse` | `1ad04079-7636-4ce6-ac32-d99aede44c14` |
+| `StagingLakehouseForDataflows_20251110175852` | `4cab7880-8c60-4bb6-a714-55cbe20f4326` |
+
+Use `list_lakehouses()` (R) or `FabricLakehouse.list_lakehouses()` (Python) to discover these programmatically.
+
+### Available Tables (31 user tables in uzima_db_backup)
 
 ```
 agents, dimdate, dimenrolledparticipants, dimsleepdetailslogs,
@@ -380,7 +407,7 @@ connectToFabricVM/
 ├── fabriconnect/                      # R package (R CMD INSTALL)
 │   ├── DESCRIPTION, NAMESPACE, LICENSE
 │   ├── README.md
-│   └── R/  (connect.R, list_tables.R, read_table.R, query_tables.R)
+│   └── R/  (connect.R, list_tables.R, read_table.R, query_tables.R, list_lakehouses.R)
 ├── fabriconnectpy/                    # Python package (pip install)
 │   ├── pyproject.toml, README.md
 │   └── fabricpy/  (__init__.py, client.py)

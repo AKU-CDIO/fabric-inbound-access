@@ -3,13 +3,20 @@
 Read Delta tables from Microsoft Fabric Lakehouses via the OneLake HTTPS API.
 Supports listing, reading (pyarrow + pandas), and SQL queries via DuckDB.
 
-## Install
+## Install (from GitHub)
 
 ```bash
-pip install ./fabriconnectpy/
-pip install "./fabriconnectpy[pandas]"   # with pandas
-pip install "./fabriconnectpy[sql]"      # with SQL queries
-pip install "./fabriconnectpy[pandas,sql]"  # full
+# Base install
+pip install git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy
+
+# With pandas
+pip install "fabricpy[pandas] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
+
+# With SQL queries (duckdb)
+pip install "fabricpy[sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
+
+# Full (pandas + SQL)
+pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
 ```
 
 ## API
@@ -20,6 +27,7 @@ pip install "./fabriconnectpy[pandas,sql]"  # full
 | `read_table(name)` | `pyarrow.Table` | Full table as Arrow table |
 | `to_pandas(name)` | `pd.DataFrame` | Full table as pandas DataFrame |
 | `sql(query)` | `pd.DataFrame` | Run SQL across tables via DuckDB |
+| `list_lakehouses()` (static) | `list[dict]` | Discover all Lakehouses in the workspace |
 
 ## Usage
 
@@ -41,6 +49,11 @@ df = lh.sql("""
     JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
     GROUP BY p.ParticipantIdentifier
 """)
+
+# Discover all Lakehouses in the workspace
+lakes = FabricLakehouse.list_lakehouses()
+for l in lakes:
+    print(f"{l['displayName']}: {l['id']}")
 ```
 
 ## Configuration

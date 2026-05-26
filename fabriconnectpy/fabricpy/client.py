@@ -9,6 +9,7 @@ WORKSPACE_NAME = "cdiofabric"
 LAKEHOUSE_GUID = "67596566-8ea9-4fd6-a451-ca9654aa4f10"
 LAKEHOUSE_NAME = "uzima_db_backup"
 STORAGE_RESOURCE = "https://storage.azure.com"
+FABRIC_API_RESOURCE = "https://api.fabric.microsoft.com"
 
 class FabricLakehouse:
     def __init__(self, workspace_guid=None, lakehouse_guid=None,
@@ -104,3 +105,44 @@ class FabricLakehouse:
             con.register(tbl, df)
         result = con.execute(query)
         return result.fetchdf()
+
+    @staticmethod
+    def list_lakehouses(workspace_guid=None, fabric_tenant=None, az_cmd=None):
+        """Discover all Lakehouses in the workspace via Fabric REST API.
+
+        Returns a list of dicts with keys: name, id, type.
+
+        Parameters
+        ----------
+        workspace_guid : str, optional
+        fabric_tenant : str, optional
+        az_cmd : str, optional
+
+        Returns
+        -------
+        list[dict]
+        """
+        wg = workspace_guid or WORKSPACE_GUID
+        ft = fabric_tenant or FABRIC_TENANT
+        ac = az_cmd or AZ_CMD
+        result = subprocess.run(
+            f"{ac} account get-access-token "
+            f"--resource {FABRIC_API_RESOURCE} "
+            f"--tenant {ft} "
+            f"--query accessToken -o tsv",
+            capture_output=True, text=True, timeout=30, shell=True
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Fabric API auth failed: {result.stderr}")
+        token = result.stdout.strip()
+        url = f"https://api.fabric.microsoft.com/v1/workspaces/{wg}/items"
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {token}"
+        }, method="GET")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+        lakes = [item for item in data.get("value", [])
+                 if item.get("type") == "Lakehouse"]
+        for l in lakes:
+            l.pop("type", None)
+        return lakes
