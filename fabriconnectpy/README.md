@@ -33,7 +33,7 @@ from fabricpy import FabricLakehouse
 lh = FabricLakehouse()
 
 # Connect by name (auto-resolves to GUID)
-lh = FabricLakehouse(lakehouse_name="HCW_fitbit_data")
+lh = FabricLakehouse(lakehouse="HCW_fitbit_data")   # or lakehouse_name
 
 # List tables
 tables = lh.list_tables()
@@ -61,7 +61,7 @@ IDs are in `fabricpy/config.json` and loaded automatically. Override:
 lh = FabricLakehouse(
     workspace_guid="your-workspace-guid",
     lakehouse_guid="your-lakehouse-guid",
-    lakehouse_name="HCW_fitbit_data",  # alternative to lakehouse_guid
+    lakehouse="HCW_fitbit_data",  # or lakehouse_name
     fabric_tenant="your-tenant-id"
 )
 ```

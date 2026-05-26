@@ -20,11 +20,16 @@ FABRIC_API_RESOURCE = "https://api.fabric.microsoft.com"
 
 class FabricLakehouse:
     def __init__(self, workspace_guid=None, lakehouse_guid=None,
-                 lakehouse_name=None, fabric_tenant=None, az_cmd=None):
+                 lakehouse=None, lakehouse_name=None,
+                 fabric_tenant=None, az_cmd=None):
         cfg = _load_config()
         self.workspace_guid = workspace_guid or cfg["workspace_guid"]
         self.fabric_tenant = fabric_tenant or cfg["fabric_tenant"]
         self.az_cmd = az_cmd or AZ_CMD
+
+        # lakehouse is a shorthand alias for lakehouse_name
+        if lakehouse_name is None and lakehouse is not None:
+            lakehouse_name = lakehouse
 
         if lakehouse_name is not None:
             lakes = FabricLakehouse.list_lakehouses(

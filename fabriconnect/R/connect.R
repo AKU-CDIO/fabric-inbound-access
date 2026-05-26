@@ -9,6 +9,8 @@
 #'   \code{lakehouse_name} is given).
 #' @param lakehouse_name Character. Lakehouse display name (e.g. \code{"HCW_fitbit_data"}).
 #'   Auto-resolved to GUID via the Fabric REST API. Overrides \code{lakehouse_id}.
+#'   Can also be passed as the positional \code{lakehouse} argument.
+#' @param lakehouse      Alias for \code{lakehouse_name}. Either works.
 #' @param fabric_tenant  Character. The Fabric tenant ID.
 #'
 #' @return An object of class \code{"fabric_connection"} containing the
@@ -18,18 +20,25 @@
 #' \dontrun{
 #' conn <- connect_to_fabric()
 #' conn <- connect_to_fabric(lakehouse_name = "HCW_fitbit_data")
+#' conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")      # same
 #' list_tables(conn)
 #' }
 #' @export
 connect_to_fabric <- function(
   workspace_id   = NULL,
   lakehouse_id   = NULL,
+  lakehouse      = NULL,
   lakehouse_name = NULL,
   fabric_tenant  = NULL
 ) {
   cfg <- .load_config()
   if (is.null(workspace_id))  workspace_id  <- cfg$workspace_guid
   if (is.null(fabric_tenant)) fabric_tenant <- cfg$fabric_tenant
+
+  # lakehouse is a shorthand alias for lakehouse_name
+  if (is.null(lakehouse_name) && !is.null(lakehouse)) {
+    lakehouse_name <- lakehouse
+  }
 
   if (!is.null(lakehouse_name)) {
     lakes <- list_lakehouses(workspace_id = workspace_id,

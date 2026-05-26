@@ -14,8 +14,12 @@ az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
 install.packages(c("AzureStor", "arrow", "DBI", "httr", "jsonlite"))
 install.packages("duckdb")   # optional — for SQL queries
 install.packages("remotes")
+
+# If "destination file exists", uncomment:
+# remove.packages("fabriconnect")
+
 remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect",
-                        force = TRUE)
+                        upgrade = "always", force = TRUE)
 ```
 
 ## Functions
@@ -37,7 +41,7 @@ library(fabriconnect)
 conn <- connect_to_fabric()
 
 # Connect by name (auto-resolves to GUID)
-conn <- connect_to_fabric(lakehouse_name = "HCW_fitbit_data")
+conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")   # or lakehouse_name
 
 # List tables
 tables <- list_tables(conn)
@@ -66,7 +70,7 @@ IDs are in `inst/config.json` and loaded automatically. Override:
 conn <- connect_to_fabric(
     workspace_id   = "your-workspace-guid",
     lakehouse_id   = "your-lakehouse-guid",
-    lakehouse_name = "HCW_fitbit_data",  # alternative to lakehouse_id
+    lakehouse      = "HCW_fitbit_data",  # or lakehouse_name
     fabric_tenant  = "your-tenant-id"
 )
 ```

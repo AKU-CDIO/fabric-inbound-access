@@ -9,8 +9,9 @@
 # ---- 1. Install (run once) ----
 # install.packages(c("AzureStor", "arrow", "DBI", "httr", "jsonlite"))
 # install.packages("remotes")
+# If "destination file exists", run: remove.packages("fabriconnect")
 # remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect",
-#                         force = TRUE)
+#                         upgrade = "always", force = TRUE)
 
 # ---- 2. Load ----
 library(fabriconnect)
@@ -19,7 +20,7 @@ library(fabriconnect)
 conn <- connect_to_fabric()
 
 # Alternative: connect by name
-# conn <- connect_to_fabric(lakehouse_name = "HCW_fitbit_data")
+# conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
 
 # ---- 4. List tables ----
 tables <- list_tables(conn)
@@ -61,7 +62,7 @@ cat("\nLakehouses in workspace:\n")
 print(lakes)
 
 # ---- 9. Connect to a different Lakehouse by name ----
-# conn2 <- connect_to_fabric(lakehouse_name = "HCW_fitbit_data")
+# conn2 <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
 
 # ---- 10. Access scope ----
 cat("\nAll traffic is HTTPS (443). No TDS port 1433 required.\n")

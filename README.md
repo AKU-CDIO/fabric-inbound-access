@@ -32,8 +32,12 @@ Your access must include at least **Viewer** role on the target Fabric workspace
 install.packages(c("AzureStor", "arrow", "DBI", "httr", "jsonlite"))
 install.packages("duckdb")   # optional — for SQL queries
 install.packages("remotes")
+
+# If you get "destination file exists", run this first:
+# remove.packages("fabriconnect")
+
 remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect",
-                        force = TRUE)
+                        upgrade = "always", force = TRUE)
 ```
 
 ### Python
@@ -53,7 +57,7 @@ library(fabriconnect)
 conn <- connect_to_fabric()
 
 # Connect by Lakehouse name (auto-resolves to GUID)
-conn <- connect_to_fabric(lakehouse_name = "HCW_fitbit_data")
+conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
 
 # List tables
 tables <- list_tables(conn)
@@ -79,7 +83,7 @@ lakes <- list_lakehouses()
 conn <- connect_to_fabric(
     workspace_id   = "your-workspace-guid",
     lakehouse_id   = "your-lakehouse-guid",
-    lakehouse_name = "HCW_fitbit_data",  # alternative to lakehouse_id
+    lakehouse      = "HCW_fitbit_data",  # or lakehouse_name
     fabric_tenant  = "your-tenant-id"
 )
 ```
@@ -94,7 +98,7 @@ from fabricpy import FabricLakehouse
 lh = FabricLakehouse()
 
 # Connect by Lakehouse name (auto-resolves to GUID)
-lh = FabricLakehouse(lakehouse_name="HCW_fitbit_data")
+lh = FabricLakehouse(lakehouse="HCW_fitbit_data")
 
 # List tables
 tables = lh.list_tables()
@@ -120,7 +124,7 @@ lakes = FabricLakehouse.list_lakehouses()
 lh = FabricLakehouse(
     workspace_guid="your-workspace-guid",
     lakehouse_guid="your-lakehouse-guid",
-    lakehouse_name="HCW_fitbit_data",  # alternative to lakehouse_guid
+    lakehouse="HCW_fitbit_data",  # or lakehouse_name
     fabric_tenant="your-tenant-id"
 )
 ```
