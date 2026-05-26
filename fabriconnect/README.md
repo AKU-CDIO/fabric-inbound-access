@@ -12,7 +12,7 @@ az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
 
 **From command line (fresh R process — no DLL lock issues):**
 ```bash
-Rscript -e "remotes::install_github('AKU-CDIO/fabric-inbound-access', subdir = 'fabriconnect', upgrade = 'always', force = TRUE)"
+Rscript -e "remotes::install_github('AKU-CDIO/fabric-inbound-access', subdir = 'fabriconnect', force = TRUE, upgrade_dependencies = FALSE)"
 ```
 
 **From within R (if package is already working):**

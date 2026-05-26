@@ -31,7 +31,7 @@ Your access must include at least **Viewer** role on the target Fabric workspace
 **If the package is broken (missing DESCRIPTION)**, use a **fresh R process** from the command line:
 
 ```bash
-Rscript -e "remotes::install_github('AKU-CDIO/fabric-inbound-access', subdir = 'fabriconnect', upgrade = 'always', force = TRUE)"
+Rscript -e "remotes::install_github('AKU-CDIO/fabric-inbound-access', subdir = 'fabriconnect', force = TRUE, upgrade_dependencies = FALSE)"
 ```
 
 If the package is already loaded and working, call from within R:

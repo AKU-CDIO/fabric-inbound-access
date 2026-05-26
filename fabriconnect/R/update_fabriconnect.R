@@ -23,7 +23,7 @@ update_fabriconnect <- function() {
     remotes::install_github(
       "AKU-CDIO/fabric-inbound-access",
       subdir = "fabriconnect",
-      upgrade = "always",
+      upgrade_dependencies = FALSE,
       force = TRUE
     )
   })
