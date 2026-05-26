@@ -6,6 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "fabricpy"
 version = "0.1.0"
 description = "Read Microsoft Fabric Lakehouse tables via OneLake HTTPS API"
+authors = [
+    { name = "Derick Imbati", email = "derick.imbati@aku.edu" },
+]
+license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
     "deltalake",

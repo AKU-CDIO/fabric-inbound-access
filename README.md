@@ -248,4 +248,7 @@ docs/                      # Supplementary documentation
 
 ## License
 
-MIT
+Apache 2.0
+
+**Author:** CDIO, AKU  
+**Contact:** Derick Imbati — derick.imbati@aku.edu

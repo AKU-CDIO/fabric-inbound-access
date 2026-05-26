@@ -2,6 +2,9 @@
 
 Read Fabric Lakehouse data over HTTPS (port 443). No TDS (port 1433) needed.
 
+**Author:** CDIO, AKU — Derick Imbati (derick.imbati@aku.edu)  
+**License:** Apache 2.0
+
 ## Install
 
 ```r

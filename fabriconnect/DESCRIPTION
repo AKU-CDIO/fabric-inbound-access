@@ -1,7 +1,8 @@
 Package: fabriconnect
 Title: Read Microsoft Fabric Lakehouse Tables via OneLake
 Version: 0.1.0
-Authors@R: person("AKU", "CDIO", email = "researchers@aku.edu", role = c("aut", "cre"))
+Authors@R: person("Derick", "Imbati", email = "derick.imbati@aku.edu", role = c("aut", "cre"),
+             comment = "CDIO, AKU")
 Description: Provides functions to connect to Microsoft Fabric Lakehouses
     via the OneLake HTTPS API, bypassing the TDS/IP firewall bug.
     Uses AzureStor for authentication and arrow for parquet reading.
