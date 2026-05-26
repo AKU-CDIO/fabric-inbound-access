@@ -75,3 +75,32 @@ class FabricLakehouse:
     def to_pandas(self, table_name):
         table = self.read_table(table_name)
         return table.to_pandas()
+
+    def sql(self, query):
+        """Run a SQL query on Lakehouse tables using DuckDB.
+
+        Table names are auto-extracted from FROM and JOIN clauses.
+        Requires duckdb package.
+
+        Parameters
+        ----------
+        query : str
+            SQL query. Use table names directly, e.g.
+            "SELECT * FROM dimdate"
+
+        Returns
+        -------
+        pandas.DataFrame
+        """
+        import duckdb
+        import re
+        con = duckdb.connect()
+        tables = set()
+        for kw in ("FROM", "JOIN"):
+            for m in re.finditer(rf"\b{kw}\s+(\w+)", query, re.IGNORECASE):
+                tables.add(m.group(1))
+        for tbl in tables:
+            df = self.to_pandas(tbl)
+            con.register(tbl, df)
+        result = con.execute(query)
+        return result.fetchdf()

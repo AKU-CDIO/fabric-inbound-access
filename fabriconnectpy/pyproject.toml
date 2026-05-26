@@ -13,3 +13,7 @@ dependencies = [
 
 [project.optional-dependencies]
 pandas = ["pandas"]
+sql = ["duckdb"]
+
+[project.gui-scripts]
+fabricpy = "fabricpy.client:main"
