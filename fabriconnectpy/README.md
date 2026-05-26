@@ -8,10 +8,10 @@ Read Delta tables from Microsoft Fabric Lakehouses via OneLake HTTPS. Works thro
 az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
 ```
 
-## Install
+## Install (one-liner)
 
 ```bash
-pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall
+pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
 ```
 
 ## API

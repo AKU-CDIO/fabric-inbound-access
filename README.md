@@ -26,25 +26,18 @@ Your access must include at least **Viewer** role on the target Fabric workspace
 
 ## Installation
 
-### R
+### R (one-liner)
 
 ```r
-install.packages(c("AzureStor", "arrow", "DBI", "httr", "jsonlite"))
-install.packages("duckdb")   # optional — for SQL queries
-install.packages("remotes")
-
-# IMPORTANT: Restart R before installing, or run:
-# remove.packages("fabriconnect")
-# (R will refuse to overwrite a loaded package)
-
-remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect",
-                        upgrade = "always", force = TRUE)
+if ("fabriconnect" %in% rownames(installed.packages())) remove.packages("fabriconnect"); remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect", upgrade = "always", force = TRUE)
 ```
 
-### Python
+Installs all dependencies (`arrow`, `DBI`, `httr`, `jsonlite`) automatically. `duckdb` is optional for SQL queries.
+
+### Python (one-liner)
 
 ```bash
-pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall
+pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
 ```
 
 ---

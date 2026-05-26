@@ -1,8 +1,7 @@
 #' Read a Delta table from a Fabric Lakehouse
 #'
-#' Reads parquet data directly from OneLake into memory — no temp files
-#' written to disk. Previous downloads for the same table are cleaned
-#' up automatically before each call.
+#' Lists parquet files via the OneLake DFS REST API and downloads them
+#' directly into memory — no temp files written to disk.
 #'
 #' For large tables (\strong{>1 GB}) use the \code{columns} parameter to
 #' select only the columns you need. For very large tables (>100 GB)
@@ -26,36 +25,47 @@
 #' }
 #' @export
 read_table <- function(conn, table_name, columns = NULL) {
-  table_path <- file.path(conn$lakehouse_id, "Tables", table_name)
-  files <- list_storage_files(conn$fs, table_path)
-  parquet_files <- files$name[grepl("\\.parquet$", files$name)]
-  if (length(parquet_files) == 0) {
+  token <- .get_fabric_token(conn$fabric_tenant)
+
+  # List parquet files via OneLake DFS API
+  list_url <- sprintf(
+    "https://onelake.dfs.fabric.microsoft.com/%s/%s/Tables/%s?recursive=true&maxResults=1000&resource=filesystem",
+    conn$workspace_id, conn$lakehouse_id, table_name
+  )
+  resp <- httr::GET(list_url, httr::add_headers(
+    Authorization = paste("Bearer", token),
+    Accept = "application/json;charset=utf-8",
+    "x-ms-version" = "2024-08-04"
+  ))
+  httr::stop_for_status(resp)
+  data <- httr::content(resp)
+  parquet_paths <- grep(
+    "\\.parquet$",
+    sapply(data$paths, `[[`, "name"),
+    value = TRUE
+  )
+  # Exclude Delta transaction log files
+  parquet_paths <- grep("/_delta_log/", parquet_paths, value = TRUE, invert = TRUE)
+  if (length(parquet_paths) == 0) {
     stop("No parquet files found for table '", table_name, "'")
   }
 
-  # Download directly into memory (no disk writes).
-  # Falls back to unique tempfile + overwrite for older AzureStor versions
-  # that don't support dest = NULL.
-  tbls <- lapply(parquet_files, function(f) {
-    raw_data <- tryCatch(
-      download_blob(conn$fs, f, NULL),
-      error = function(e) NULL
-    )
-    if (!is.null(raw_data)) {
-      if (!is.null(columns)) {
-        arrow::read_parquet(raw_data, col_select = columns)
-      } else {
-        arrow::read_parquet(raw_data)
-      }
+  # Download each parquet file directly into memory
+  base_url <- sprintf(
+    "https://onelake.dfs.fabric.microsoft.com/%s",
+    conn$workspace_id
+  )
+  tbls <- lapply(parquet_paths, function(p) {
+    file_url <- file.path(base_url, p)
+    resp <- httr::GET(file_url, httr::add_headers(
+      Authorization = paste("Bearer", token)
+    ))
+    httr::stop_for_status(resp)
+    raw_data <- httr::content(resp, as = "raw")
+    if (!is.null(columns)) {
+      arrow::read_parquet(raw_data, col_select = columns)
     } else {
-      tmp <- tempfile(fileext = ".parquet")
-      on.exit(unlink(tmp), add = TRUE)
-      download_blob(conn$fs, f, tmp, overwrite = TRUE)
-      if (!is.null(columns)) {
-        arrow::read_parquet(tmp, col_select = columns)
-      } else {
-        arrow::read_parquet(tmp)
-      }
+      arrow::read_parquet(raw_data)
     }
   })
 

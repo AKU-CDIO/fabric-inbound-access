@@ -14,7 +14,7 @@
 #' @param fabric_tenant  Character. The Fabric tenant ID.
 #'
 #' @return An object of class \code{"fabric_connection"} containing the
-#'   authenticated storage container and identifiers.
+#'   workspace and lakehouse identifiers.
 #'
 #' @examples
 #' \dontrun{
@@ -52,11 +52,8 @@ connect_to_fabric <- function(
   }
   if (is.null(lakehouse_id)) lakehouse_id <- cfg$lakehouse_guid
 
-  token <- .get_fabric_token(fabric_tenant)
-  ad <- storage_endpoint("https://onelake.dfs.fabric.microsoft.com", token = token)
-  fs <- storage_container(ad, workspace_id)
   structure(
-    list(fs = fs, workspace_id = workspace_id, lakehouse_id = lakehouse_id,
+    list(workspace_id = workspace_id, lakehouse_id = lakehouse_id,
          fabric_tenant = fabric_tenant),
     class = "fabric_connection"
   )

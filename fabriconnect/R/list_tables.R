@@ -15,10 +15,22 @@
 #' }
 #' @export
 list_tables <- function(conn) {
-  items <- list_storage_files(
-    conn$fs,
-    file.path(conn$lakehouse_id, "Tables")
+  token <- .get_fabric_token(conn$fabric_tenant)
+  url <- sprintf(
+    "https://onelake.dfs.fabric.microsoft.com/%s/%s/Tables?recursive=true&maxResults=1000&resource=filesystem",
+    conn$workspace_id,
+    conn$lakehouse_id
   )
-  all_names <- basename(items$name[items$isdir])
-  all_names[!grepl("^_", all_names)]
+  resp <- httr::GET(url, httr::add_headers(
+    Authorization = paste("Bearer", token),
+    Accept = "application/json;charset=utf-8",
+    "x-ms-version" = "2024-08-04"
+  ))
+  httr::stop_for_status(resp)
+  data <- httr::content(resp)
+  paths <- sapply(data$paths, `[[`, "name")
+  paths <- grep("/_delta_log/", paths, value = TRUE, invert = TRUE)
+  tables <- unique(sub("/.*", "", sub(".*/Tables/", "", paths)))
+  tables <- tables[nchar(tables) > 0 & !grepl("^_", tables)]
+  sort(tables)
 }
