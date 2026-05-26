@@ -8,10 +8,17 @@ Read Delta tables from Microsoft Fabric Lakehouses via OneLake HTTPS. Works thro
 az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
 ```
 
-## Install (one-liner)
+## Install
 
+**From command line (fresh R process — no DLL lock issues):**
+```bash
+Rscript -e "remotes::install_github('AKU-CDIO/fabric-inbound-access', subdir = 'fabriconnect', upgrade = 'always', force = TRUE)"
+```
+
+**From within R (if package is already working):**
 ```r
-if ("fabriconnect" %in% rownames(installed.packages())) remove.packages("fabriconnect"); remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect", upgrade = "always", force = TRUE)
+library(fabriconnect)
+update_fabriconnect()
 ```
 
 Installs all deps (`arrow`, `DBI`, `httr`, `jsonlite`). `duckdb` is optional for SQL.

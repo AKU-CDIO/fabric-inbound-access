@@ -7,6 +7,6 @@ Description: Provides functions to connect to Microsoft Fabric Lakehouses
     Uses AzureStor for authentication and arrow for parquet reading.
 Depends: R (>= 4.0)
 Imports: arrow, utils, DBI, httr, jsonlite
-Suggests: duckdb, dplyr
+Suggests: duckdb, dplyr, callr
 License: MIT + file LICENSE
 Encoding: UTF-8

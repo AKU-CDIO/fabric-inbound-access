@@ -26,10 +26,20 @@ Your access must include at least **Viewer** role on the target Fabric workspace
 
 ## Installation
 
-### R (one-liner)
+### R
+
+**If the package is broken (missing DESCRIPTION)**, use a **fresh R process** from the command line:
+
+```bash
+Rscript -e "remotes::install_github('AKU-CDIO/fabric-inbound-access', subdir = 'fabriconnect', upgrade = 'always', force = TRUE)"
+```
+
+If the package is already loaded and working, call from within R:
 
 ```r
-if ("fabriconnect" %in% rownames(installed.packages())) remove.packages("fabriconnect"); remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect", upgrade = "always", force = TRUE)
+# Restart R first, then in a fresh session:
+library(fabriconnect)
+update_fabriconnect()   # installs via a sub-process, no DLL lock
 ```
 
 Installs all dependencies (`arrow`, `DBI`, `httr`, `jsonlite`) automatically. `duckdb` is optional for SQL queries.
