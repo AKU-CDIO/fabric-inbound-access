@@ -20,14 +20,29 @@ FABRIC_API_RESOURCE = "https://api.fabric.microsoft.com"
 
 class FabricLakehouse:
     def __init__(self, workspace_guid=None, lakehouse_guid=None,
-                 fabric_tenant=None, az_cmd=None):
+                 lakehouse_name=None, fabric_tenant=None, az_cmd=None):
         cfg = _load_config()
         self.workspace_guid = workspace_guid or cfg["workspace_guid"]
-        self.lakehouse_guid = lakehouse_guid or cfg["lakehouse_guid"]
         self.fabric_tenant = fabric_tenant or cfg["fabric_tenant"]
         self.az_cmd = az_cmd or AZ_CMD
-        self._workspace_name = cfg["workspace_name"]
-        self._lakehouse_name = cfg["lakehouse_name"]
+
+        if lakehouse_name is not None:
+            lakes = FabricLakehouse.list_lakehouses(
+                workspace_guid=self.workspace_guid,
+                fabric_tenant=self.fabric_tenant,
+                az_cmd=self.az_cmd
+            )
+            for l in lakes:
+                if l["displayName"] == lakehouse_name:
+                    lakehouse_guid = l["id"]
+                    break
+            else:
+                raise ValueError(
+                    f"Lakehouse '{lakehouse_name}' not found. "
+                    "Use FabricLakehouse.list_lakehouses() to see available names."
+                )
+
+        self.lakehouse_guid = lakehouse_guid or cfg["lakehouse_guid"]
 
     def _get_token(self):
         result = subprocess.run(
@@ -47,8 +62,8 @@ class FabricLakehouse:
     def list_tables(self):
         token = self._get_token()
         url = (
-            f"https://onelake.dfs.fabric.microsoft.com/{self._workspace_name}/"
-            f"{self._lakehouse_name}.Lakehouse/Tables"
+            f"https://onelake.dfs.fabric.microsoft.com/{self.workspace_guid}/"
+            f"{self.lakehouse_guid}/Tables"
             f"?recursive=true&maxResults=1000&resource=filesystem"
         )
         req = urllib.request.Request(url, headers={

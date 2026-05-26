@@ -11,7 +11,7 @@ az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
 ## Install
 
 ```bash
-pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
+pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall
 ```
 
 ## API
@@ -29,7 +29,11 @@ pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbou
 ```python
 from fabricpy import FabricLakehouse
 
+# Connect (default: uzima_db_backup)
 lh = FabricLakehouse()
+
+# Connect by name (auto-resolves to GUID)
+lh = FabricLakehouse(lakehouse_name="HCW_fitbit_data")
 
 # List tables
 tables = lh.list_tables()
@@ -47,7 +51,6 @@ df = lh.sql("""
 
 # Discover Lakehouses
 lakes = FabricLakehouse.list_lakehouses()
-lh2 = FabricLakehouse(lakehouse_guid=lakes[1]["id"])
 ```
 
 ## Configuration
@@ -58,6 +61,7 @@ IDs are in `fabricpy/config.json` and loaded automatically. Override:
 lh = FabricLakehouse(
     workspace_guid="your-workspace-guid",
     lakehouse_guid="your-lakehouse-guid",
+    lakehouse_name="HCW_fitbit_data",  # alternative to lakehouse_guid
     fabric_tenant="your-tenant-id"
 )
 ```

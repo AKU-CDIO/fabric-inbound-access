@@ -5,7 +5,10 @@
 #' Defaults are read from the bundled configuration file.
 #'
 #' @param workspace_id   Character. The Fabric workspace GUID.
-#' @param lakehouse_id   Character. The Lakehouse item GUID.
+#' @param lakehouse_id   Character. The Lakehouse item GUID (ignored if
+#'   \code{lakehouse_name} is given).
+#' @param lakehouse_name Character. Lakehouse display name (e.g. \code{"HCW_fitbit_data"}).
+#'   Auto-resolved to GUID via the Fabric REST API. Overrides \code{lakehouse_id}.
 #' @param fabric_tenant  Character. The Fabric tenant ID.
 #'
 #' @return An object of class \code{"fabric_connection"} containing the
@@ -14,18 +17,32 @@
 #' @examples
 #' \dontrun{
 #' conn <- connect_to_fabric()
+#' conn <- connect_to_fabric(lakehouse_name = "HCW_fitbit_data")
 #' list_tables(conn)
 #' }
 #' @export
 connect_to_fabric <- function(
-  workspace_id  = NULL,
-  lakehouse_id  = NULL,
-  fabric_tenant = NULL
+  workspace_id   = NULL,
+  lakehouse_id   = NULL,
+  lakehouse_name = NULL,
+  fabric_tenant  = NULL
 ) {
   cfg <- .load_config()
   if (is.null(workspace_id))  workspace_id  <- cfg$workspace_guid
-  if (is.null(lakehouse_id))  lakehouse_id  <- cfg$lakehouse_guid
   if (is.null(fabric_tenant)) fabric_tenant <- cfg$fabric_tenant
+
+  if (!is.null(lakehouse_name)) {
+    lakes <- list_lakehouses(workspace_id = workspace_id,
+                             fabric_tenant = fabric_tenant)
+    idx <- which(lakes$name == lakehouse_name)
+    if (length(idx) == 0) {
+      stop("Lakehouse '", lakehouse_name, "' not found in workspace. ",
+           "Use list_lakehouses() to see available names.")
+    }
+    lakehouse_id <- lakes$id[idx[1]]
+  }
+  if (is.null(lakehouse_id)) lakehouse_id <- cfg$lakehouse_guid
+
   token <- .get_fabric_token(fabric_tenant)
   ad <- storage_endpoint("https://onelake.dfs.fabric.microsoft.com", token = token)
   fs <- storage_container(ad, workspace_id)

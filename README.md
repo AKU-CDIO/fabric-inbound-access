@@ -32,13 +32,14 @@ Your access must include at least **Viewer** role on the target Fabric workspace
 install.packages(c("AzureStor", "arrow", "DBI", "httr", "jsonlite"))
 install.packages("duckdb")   # optional — for SQL queries
 install.packages("remotes")
-remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect")
+remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect",
+                        force = TRUE)
 ```
 
 ### Python
 
 ```bash
-pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
+pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall
 ```
 
 ---
@@ -50,6 +51,9 @@ library(fabriconnect)
 
 # Connect (IDs read from bundled config.json)
 conn <- connect_to_fabric()
+
+# Connect by Lakehouse name (auto-resolves to GUID)
+conn <- connect_to_fabric(lakehouse_name = "HCW_fitbit_data")
 
 # List tables
 tables <- list_tables(conn)
@@ -67,23 +71,16 @@ result <- query_tables(conn, "
 
 # Discover all Lakehouses in the workspace
 lakes <- list_lakehouses()
-print(lakes)
-```
-
-### Connect to a different Lakehouse
-
-```r
-lakes <- list_lakehouses()
-conn <- connect_to_fabric(lakehouse_id = lakes$id[2])
 ```
 
 ### Override defaults
 
 ```r
 conn <- connect_to_fabric(
-    workspace_id  = "your-workspace-guid",
-    lakehouse_id  = "your-lakehouse-guid",
-    fabric_tenant = "your-tenant-id"
+    workspace_id   = "your-workspace-guid",
+    lakehouse_id   = "your-lakehouse-guid",
+    lakehouse_name = "HCW_fitbit_data",  # alternative to lakehouse_id
+    fabric_tenant  = "your-tenant-id"
 )
 ```
 
@@ -95,6 +92,9 @@ conn <- connect_to_fabric(
 from fabricpy import FabricLakehouse
 
 lh = FabricLakehouse()
+
+# Connect by Lakehouse name (auto-resolves to GUID)
+lh = FabricLakehouse(lakehouse_name="HCW_fitbit_data")
 
 # List tables
 tables = lh.list_tables()
@@ -112,15 +112,6 @@ df = lh.sql("""
 
 # Discover all Lakehouses in the workspace
 lakes = FabricLakehouse.list_lakehouses()
-for l in lakes:
-    print(f"{l['displayName']}: {l['id']}")
-```
-
-### Connect to a different Lakehouse
-
-```python
-lakes = FabricLakehouse.list_lakehouses()
-lh = FabricLakehouse(lakehouse_guid=lakes[1]["id"])
 ```
 
 ### Override defaults
@@ -129,6 +120,7 @@ lh = FabricLakehouse(lakehouse_guid=lakes[1]["id"])
 lh = FabricLakehouse(
     workspace_guid="your-workspace-guid",
     lakehouse_guid="your-lakehouse-guid",
+    lakehouse_name="HCW_fitbit_data",  # alternative to lakehouse_guid
     fabric_tenant="your-tenant-id"
 )
 ```
@@ -155,7 +147,7 @@ The default is `uzima_db_backup` (31 user tables). Use `list_lakehouses()` or `F
 
 1. `az.cmd` gets an OAuth2 token for `https://storage.azure.com` (Fabric tenant)
 2. OneLake ADLS Gen2 REST API lists Delta table directories
-3. R downloads parquet files via `AzureStor` → `arrow::read_parquet()`; Python uses `deltalake` with `use_fabric_endpoint=true`
+3. R downloads parquet files via `AzureStor` + `arrow`; Python uses `deltalake` with `use_fabric_endpoint=true`
 4. SQL queries run in DuckDB in-memory after fetching tables
 
 All communication is HTTPS (443) — no TDS (1433) needed.
@@ -184,7 +176,7 @@ fabriconnectpy/        # Python package
   fabricpy/config.json # workspace/Lakehouse GUIDs
   fabricpy/client.py   # FabricLakehouse class
 examples/
-docs/                  # bug report, workarounds, technical notes
+docs/
 ```
 
 ---
