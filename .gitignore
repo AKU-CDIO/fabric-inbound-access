@@ -1,0 +1,29 @@
+# R
+.Rproj.user/
+.Rhistory/
+.RData/
+.Ruserdata/
+*.Rproj
+
+# R
+.Rproj.user/
+.Rhistory/
+.RData/
+.Ruserdata/
+*.Rproj
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg-info
+dist/
+build/
+
+# General
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
