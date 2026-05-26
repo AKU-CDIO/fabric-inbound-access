@@ -33,7 +33,7 @@ install.packages(c("AzureStor", "arrow", "DBI", "httr", "jsonlite"))
 install.packages("duckdb")   # optional — for SQL queries
 install.packages("remotes")
 
-# If you get "destination file exists", run this first:
+# If "destination file exists" (stale package), run:
 # remove.packages("fabriconnect")
 
 remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect",
@@ -62,18 +62,25 @@ conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
 # List tables
 tables <- list_tables(conn)
 
-# Read a table
+# Read a table (temp dir cleaned before each call, overwrite=TRUE)
 df <- read_table(conn, "dimenrolledparticipants")
 
-# SQL with JOIN
+# Read only specific columns — less data transferred, less memory
+df <- read_table(conn, "factfitbitsleeplogs",
+                 columns = c("ParticipantKey", "MinutesAsleep", "MinutesInBed"))
+
+# SQL with JOIN — table_columns prunes large tables
 result <- query_tables(conn, "
     SELECT p.ParticipantIdentifier, count(s.Skey) AS n
     FROM dimenrolledparticipants p
     JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
-    GROUP BY p.ParticipantIdentifier
-")
+    GROUP BY p.ParticipantIdentifier",
+  table_columns = list(
+    dimenrolledparticipants = c("Skey", "ParticipantIdentifier"),
+    factfitbitsleeplogs     = c("Skey", "ParticipantKey")
+  ))
 
-# Discover all Lakehouses in the workspace
+# Discover all Lakehouses
 lakes <- list_lakehouses()
 ```
 
@@ -83,7 +90,7 @@ lakes <- list_lakehouses()
 conn <- connect_to_fabric(
     workspace_id   = "your-workspace-guid",
     lakehouse_id   = "your-lakehouse-guid",
-    lakehouse      = "HCW_fitbit_data",  # or lakehouse_name
+    lakehouse      = "HCW_fitbit_data",
     fabric_tenant  = "your-tenant-id"
 )
 ```
@@ -97,24 +104,31 @@ from fabricpy import FabricLakehouse
 
 lh = FabricLakehouse()
 
-# Connect by Lakehouse name (auto-resolves to GUID)
+# Connect by Lakehouse name
 lh = FabricLakehouse(lakehouse="HCW_fitbit_data")
 
 # List tables
 tables = lh.list_tables()
 
-# Read as pandas
+# Read all columns
 df = lh.to_pandas("dimenrolledparticipants")
 
-# SQL with JOIN
+# Read only specific columns (pushdown — no unnecessary transfer)
+df = lh.to_pandas("factfitbitsleeplogs",
+                   columns=["ParticipantKey", "MinutesAsleep", "MinutesInBed"])
+
+# SQL with column pruning
 df = lh.sql("""
     SELECT p.ParticipantIdentifier, count(s.Skey) AS n
     FROM dimenrolledparticipants p
     JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
-    GROUP BY p.ParticipantIdentifier
-""")
+    GROUP BY p.ParticipantIdentifier""",
+  table_columns={
+    "dimenrolledparticipants": ["Skey", "ParticipantIdentifier"],
+    "factfitbitsleeplogs":     ["Skey", "ParticipantKey"]
+  })
 
-# Discover all Lakehouses in the workspace
+# Discover all Lakehouses
 lakes = FabricLakehouse.list_lakehouses()
 ```
 
@@ -124,10 +138,24 @@ lakes = FabricLakehouse.list_lakehouses()
 lh = FabricLakehouse(
     workspace_guid="your-workspace-guid",
     lakehouse_guid="your-lakehouse-guid",
-    lakehouse="HCW_fitbit_data",  # or lakehouse_name
+    lakehouse="HCW_fitbit_data",
     fabric_tenant="your-tenant-id"
 )
 ```
+
+---
+
+## Working with Large Tables (>500 GB)
+
+| Strategy | R | Python |
+|----------|---|--------|
+| **Column pruning** | `read_table(conn, "table", columns = c("col1", "col2"))` | `lh.to_pandas("table", columns=["col1", "col2"])` |
+| **SQL column pruning** | `query_tables(conn, sql, table_columns = list(...))` | `lh.sql(query, table_columns={...})` |
+| **Disk usage** | Downloads parquet files to temp dir, cleaned each run | Reads directly from OneLake (no disk) |
+| **Memory** | Full table loaded into R's memory | Full table loaded into Python memory |
+| **Temp file cleanup** | Automatic — `unlink()` before each `read_table()` call | No temp files |
+
+**For the largest tables:** Python's `deltalake` library reads directly from OneLake without downloading to disk. The `columns` parameter enables **predicate pushdown** — only the requested bytes cross the network. R's `AzureStor` downloads parquet files first (deleted before each subsequent call) and then reads with `arrow`.
 
 ---
 
@@ -151,7 +179,8 @@ The default is `uzima_db_backup` (31 user tables). Use `list_lakehouses()` or `F
 
 1. `az.cmd` gets an OAuth2 token for `https://storage.azure.com` (Fabric tenant)
 2. OneLake ADLS Gen2 REST API lists Delta table directories
-3. R downloads parquet files via `AzureStor` + `arrow`; Python uses `deltalake` with `use_fabric_endpoint=true`
+3. **R**: Downloads parquet files (temp dir cleaned each run) → `arrow::read_parquet()`
+   **Python**: Reads Delta tables directly via `deltalake` with `use_fabric_endpoint=true` (no disk)
 4. SQL queries run in DuckDB in-memory after fetching tables
 
 All communication is HTTPS (443) — no TDS (1433) needed.

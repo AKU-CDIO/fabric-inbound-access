@@ -28,38 +28,37 @@ remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect
 |----------|-------------|
 | `connect_to_fabric()` | Authenticate and return a connection object |
 | `list_tables(conn)` | List all user tables in the Lakehouse |
-| `read_table(conn, name)` | Read a table as data.frame |
-| `query_tables(conn, sql)` | Run SQL across tables via DuckDB |
+| `read_table(conn, name, columns = NULL)` | Read a table as data.frame (columns prunes large tables) |
+| `query_tables(conn, sql, table_columns = NULL)` | Run SQL across tables via DuckDB |
 | `list_lakehouses()` | Discover all Lakehouses in the workspace |
 
 ## Usage
 
 ```r
 library(fabriconnect)
-
-# Connect (default: uzima_db_backup)
 conn <- connect_to_fabric()
 
-# Connect by name (auto-resolves to GUID)
-conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")   # or lakehouse_name
-
-# List tables
-tables <- list_tables(conn)
-
-# Read a table
+# Read all columns
 df <- read_table(conn, "dimenrolledparticipants")
 
-# SQL with JOIN
+# Read only needed columns (less network/memory)
+df <- read_table(conn, "factfitbitsleeplogs",
+                 columns = c("ParticipantKey", "MinutesAsleep"))
+
+# SQL with column pruning for large tables
 result <- query_tables(conn, "
     SELECT p.ParticipantIdentifier, count(s.Skey) AS n
     FROM dimenrolledparticipants p
     JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
-    GROUP BY p.ParticipantIdentifier
-")
+    GROUP BY p.ParticipantIdentifier",
+  table_columns = list(
+    dimenrolledparticipants = c("Skey", "ParticipantIdentifier"),
+    factfitbitsleeplogs     = c("Skey", "ParticipantKey")
+  ))
 
-# Discover all Lakehouses
+# Discover and connect by name
 lakes <- list_lakehouses()
-print(lakes)
+conn2 <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
 ```
 
 ## Configuration
@@ -70,7 +69,13 @@ IDs are in `inst/config.json` and loaded automatically. Override:
 conn <- connect_to_fabric(
     workspace_id   = "your-workspace-guid",
     lakehouse_id   = "your-lakehouse-guid",
-    lakehouse      = "HCW_fitbit_data",  # or lakehouse_name
+    lakehouse      = "HCW_fitbit_data",
     fabric_tenant  = "your-tenant-id"
 )
 ```
+
+## Large tables
+
+- Use `columns =` to select only the columns you need — data is pruned at the parquet level
+- Temp files are deleted before each `read_table()` call (no accumulation)
+- For >100 GB prefer Python's `deltalake` which reads directly from OneLake (no disk)

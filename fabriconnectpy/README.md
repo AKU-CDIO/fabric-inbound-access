@@ -19,9 +19,9 @@ pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbou
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `list_tables()` | `list[str]` | All user table names |
-| `read_table(name)` | `pyarrow.Table` | Full table as Arrow table |
-| `to_pandas(name)` | `pd.DataFrame` | Full table as pandas DataFrame |
-| `sql(query)` | `pd.DataFrame` | Run SQL across tables via DuckDB |
+| `read_table(name, columns=None)` | `pyarrow.Table` | Full table as Arrow table (with column pushdown) |
+| `to_pandas(name, columns=None)` | `pd.DataFrame` | Full table as pandas DataFrame |
+| `sql(query, table_columns=None)` | `pd.DataFrame` | Run SQL across tables via DuckDB |
 | `list_lakehouses()` (static) | `list[dict]` | Discover all Lakehouses in the workspace |
 
 ## Usage
@@ -29,28 +29,29 @@ pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbou
 ```python
 from fabricpy import FabricLakehouse
 
-# Connect (default: uzima_db_backup)
 lh = FabricLakehouse()
 
-# Connect by name (auto-resolves to GUID)
-lh = FabricLakehouse(lakehouse="HCW_fitbit_data")   # or lakehouse_name
-
-# List tables
-tables = lh.list_tables()
-
-# Read as pandas
+# Read all columns
 df = lh.to_pandas("dimenrolledparticipants")
 
-# SQL with JOIN
+# Read only needed columns (predicate pushdown — less network)
+df = lh.to_pandas("factfitbitsleeplogs",
+                   columns=["ParticipantKey", "MinutesAsleep"])
+
+# SQL with column pruning
 df = lh.sql("""
     SELECT p.ParticipantIdentifier, count(s.Skey) AS n
     FROM dimenrolledparticipants p
     JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
-    GROUP BY p.ParticipantIdentifier
-""")
+    GROUP BY p.ParticipantIdentifier""",
+  table_columns={
+    "dimenrolledparticipants": ["Skey", "ParticipantIdentifier"],
+    "factfitbitsleeplogs":     ["Skey", "ParticipantKey"]
+  })
 
-# Discover Lakehouses
+# Discover and connect by name
 lakes = FabricLakehouse.list_lakehouses()
+lh2 = FabricLakehouse(lakehouse="HCW_fitbit_data")
 ```
 
 ## Configuration
@@ -61,7 +62,13 @@ IDs are in `fabricpy/config.json` and loaded automatically. Override:
 lh = FabricLakehouse(
     workspace_guid="your-workspace-guid",
     lakehouse_guid="your-lakehouse-guid",
-    lakehouse="HCW_fitbit_data",  # or lakehouse_name
+    lakehouse="HCW_fitbit_data",
     fabric_tenant="your-tenant-id"
 )
 ```
+
+## Large tables
+
+- `deltalake` reads directly from OneLake (no disk download)
+- Use `columns=` for predicate pushdown — only requested bytes cross the network
+- No temp files, no accumulation

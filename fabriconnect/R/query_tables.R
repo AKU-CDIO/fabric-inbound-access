@@ -4,24 +4,36 @@
 #' on them using DuckDB. Table names are automatically extracted from
 #' \code{FROM} and \code{JOIN} clauses.
 #'
-#' @param conn A \code{fabric_connection} object.
-#' @param sql  Character. SQL query. Use table names directly
+#' For large tables, use the \code{table_columns} parameter to fetch only
+#' the columns you need. This dramatically reduces download size and
+#' memory usage.
+#'
+#' @param conn          A \code{fabric_connection} object.
+#' @param sql           Character. SQL query. Use table names directly
 #'   (e.g. \code{SELECT * FROM dimdate}).
+#' @param table_columns Named list. Optional column filtering per table.
+#'   Names are table names, values are character vectors of columns to
+#'   fetch. Tables not listed fetch all columns.
 #'
 #' @return A \code{data.frame} with the query results.
 #'
 #' @examples
 #' \dontrun{
 #' conn <- connect_to_fabric()
+#' # With column pruning for large tables
 #' result <- query_tables(conn,
 #'   "SELECT p.ParticipantIdentifier, COUNT(s.Skey) AS n
 #'    FROM dimenrolledparticipants p
 #'    JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
-#'    GROUP BY p.ParticipantIdentifier")
+#'    GROUP BY p.ParticipantIdentifier",
+#'   table_columns = list(
+#'     dimenrolledparticipants = c("Skey", "ParticipantIdentifier"),
+#'     factfitbitsleeplogs     = c("Skey", "ParticipantKey")
+#'   ))
 #' head(result)
 #' }
 #' @export
-query_tables <- function(conn, sql) {
+query_tables <- function(conn, sql, table_columns = NULL) {
   if (!requireNamespace("duckdb", quietly = TRUE)) {
     stop("Package 'duckdb' is required for SQL queries. Install with: install.packages('duckdb')")
   }
@@ -39,7 +51,8 @@ query_tables <- function(conn, sql) {
   con <- DBI::dbConnect(duckdb::duckdb())
   on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
   for (tbl in tables) {
-    df <- read_table(conn, tbl)
+    cols <- table_columns[[tbl]]
+    df <- read_table(conn, tbl, columns = cols)
     DBI::dbWriteTable(con, tbl, as.data.frame(df), overwrite = TRUE)
   }
   DBI::dbGetQuery(con, sql)

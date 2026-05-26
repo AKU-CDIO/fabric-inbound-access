@@ -89,7 +89,20 @@ class FabricLakehouse:
                 tables.add(table)
         return sorted(tables)
 
-    def read_table(self, table_name):
+    def read_table(self, table_name, columns=None):
+        """Read a Delta table as a pyarrow Table.
+
+        Parameters
+        ----------
+        table_name : str
+        columns : list of str, optional
+            Column names to select (predicate pushdown). Reduces
+            network transfer for large tables.
+
+        Returns
+        -------
+        pyarrow.Table
+        """
         from deltalake import DeltaTable
         token = self._get_token()
         storage_options = {
@@ -101,13 +114,28 @@ class FabricLakehouse:
             f"{self.lakehouse_guid}/Tables/{table_name}"
         )
         dt = DeltaTable(path, storage_options=storage_options)
-        return dt.to_pyarrow_table()
+        kwargs = {}
+        if columns is not None:
+            kwargs["columns"] = columns
+        return dt.to_pyarrow_table(**kwargs)
 
-    def to_pandas(self, table_name):
-        table = self.read_table(table_name)
+    def to_pandas(self, table_name, columns=None):
+        """Read a Delta table as a pandas DataFrame.
+
+        Parameters
+        ----------
+        table_name : str
+        columns : list of str, optional
+            Column names to select (predicate pushdown).
+
+        Returns
+        -------
+        pandas.DataFrame
+        """
+        table = self.read_table(table_name, columns=columns)
         return table.to_pandas()
 
-    def sql(self, query):
+    def sql(self, query, table_columns=None):
         """Run a SQL query on Lakehouse tables using DuckDB.
 
         Table names are auto-extracted from FROM and JOIN clauses.
@@ -118,6 +146,11 @@ class FabricLakehouse:
         query : str
             SQL query. Use table names directly, e.g.
             "SELECT * FROM dimdate"
+        table_columns : dict of str -> list of str, optional
+            Column pruning per table, e.g.
+            ``{"tablename": ["col1", "col2"]}``.
+            Unlisted tables fetch all columns. Reduces data transfer
+            for large tables.
 
         Returns
         -------
@@ -131,7 +164,8 @@ class FabricLakehouse:
             for m in re.finditer(rf"\b{kw}\s+(\w+)", query, re.IGNORECASE):
                 tables.add(m.group(1))
         for tbl in tables:
-            df = self.to_pandas(tbl)
+            cols = table_columns.get(tbl) if table_columns else None
+            df = self.to_pandas(tbl, columns=cols)
             con.register(tbl, df)
         result = con.execute(query)
         return result.fetchdf()
