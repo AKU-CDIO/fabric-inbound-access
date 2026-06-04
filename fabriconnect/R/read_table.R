@@ -1,4 +1,4 @@
-read_table <- function(conn, table_name, columns = NULL) {
+read_table <- function(conn, table_name, columns = NULL, overwrite = TRUE) {
   token <- .get_fabric_token(conn$fabric_tenant, conn$access_token)
 
   list_url <- sprintf(
@@ -24,9 +24,16 @@ read_table <- function(conn, table_name, columns = NULL) {
 
   base_url <- sprintf("https://onelake.dfs.fabric.microsoft.com/%s", conn$workspace_id)
 
-  # Download to temp files (avoids Arrow in-memory raw parsing issues)
-  tmp <- tempfile()
-  dir.create(tmp)
+  # Download to a temp subdirectory
+  tmp <- file.path(tempdir(), sprintf("fabriconnect_%s_%d", gsub("[^A-Za-z0-9]", "_", table_name), as.integer(Sys.time())))
+  if (dir.exists(tmp)) {
+    if (overwrite) {
+      unlink(tmp, recursive = TRUE)
+    } else {
+      stop("Destination directory '", tmp, "' exists and overwrite is FALSE")
+    }
+  }
+  dir.create(tmp, recursive = TRUE)
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
   files <- file.path(tmp, basename(parquet_paths))
   for (i in seq_along(parquet_paths)) {
