@@ -15,17 +15,73 @@ def _load_config():
     return _CONFIG
 
 AZ_CMD = "az.cmd"
+FAB_CMD = "fab"
 STORAGE_RESOURCE = "https://storage.azure.com"
 FABRIC_API_RESOURCE = "https://api.fabric.microsoft.com"
+
+_TOKEN_CACHE = {}
+
+def _try_env_var_token():
+    token = os.environ.get("FABRIC_ACCESS_TOKEN") or os.environ.get("AZURE_ACCESS_TOKEN")
+    return token.strip() if token else None
+
+def _try_azure_cli(tenant, resource, az_cmd):
+    result = subprocess.run(
+        f"{az_cmd} account get-access-token "
+        f"--resource {resource} "
+        f"--tenant {tenant} "
+        f"--query accessToken -o tsv",
+        capture_output=True, text=True, timeout=30, shell=True
+    )
+    if result.returncode != 0:
+        return None
+    token = result.stdout.strip()
+    return token if token else None
+
+def _try_fabric_cli():
+    result = subprocess.run(
+        f"{FAB_CMD} token",
+        capture_output=True, text=True, timeout=30, shell=True
+    )
+    if result.returncode != 0:
+        return None
+    token = result.stdout.strip()
+    return token if token else None
+
+def _try_msal_device_code(tenant, resource):
+    try:
+        import msal
+    except ImportError:
+        return None
+    import sys
+    import threading
+    app = msal.PublicClientApplication(
+        "1950a258-227b-4e31-a9cf-717495945fc2",
+        authority=f"https://login.microsoftonline.com/{tenant}"
+    )
+    flow = app.initiate_device_flow(scopes=[f"{resource}/.default"])
+    if "user_code" not in flow:
+        return None
+    print(f"Open {flow['verification_uri']} and enter code {flow['user_code']}", file=sys.stderr)
+    result = {"token": None}
+    def acquire():
+        r = app.acquire_token_by_device_flow(flow)
+        if "access_token" in r:
+            result["token"] = r["access_token"]
+    t = threading.Thread(target=acquire, daemon=True)
+    t.start()
+    t.join(timeout=120)
+    return result["token"]
 
 class FabricLakehouse:
     def __init__(self, workspace_guid=None, lakehouse_guid=None,
                  lakehouse=None, lakehouse_name=None,
-                 fabric_tenant=None, az_cmd=None):
+                 fabric_tenant=None, token=None, az_cmd=None):
         cfg = _load_config()
         self.workspace_guid = workspace_guid or cfg["workspace_guid"]
         self.fabric_tenant = fabric_tenant or cfg["fabric_tenant"]
         self.az_cmd = az_cmd or AZ_CMD
+        self._explicit_token = token
 
         # lakehouse is a shorthand alias for lakehouse_name
         if lakehouse_name is None and lakehouse is not None:
@@ -35,6 +91,7 @@ class FabricLakehouse:
             lakes = FabricLakehouse.list_lakehouses(
                 workspace_guid=self.workspace_guid,
                 fabric_tenant=self.fabric_tenant,
+                token=token,
                 az_cmd=self.az_cmd
             )
             for l in lakes:
@@ -49,23 +106,52 @@ class FabricLakehouse:
 
         self.lakehouse_guid = lakehouse_guid or cfg["lakehouse_guid"]
 
-    def _get_token(self):
-        result = subprocess.run(
-            f"{self.az_cmd} account get-access-token "
-            f"--resource {STORAGE_RESOURCE} "
-            f"--tenant {self.fabric_tenant} "
-            f"--query accessToken -o tsv",
-            capture_output=True, text=True, timeout=30, shell=True
+    def _get_token(self, resource=STORAGE_RESOURCE):
+        cache_key = f"{self.fabric_tenant}:{resource}"
+        if cache_key in _TOKEN_CACHE:
+            return _TOKEN_CACHE[cache_key]
+
+        # Strategy 1: explicitly provided token
+        if self._explicit_token:
+            _TOKEN_CACHE[cache_key] = self._explicit_token
+            return self._explicit_token
+
+        # Strategy 2: environment variable
+        env_token = _try_env_var_token()
+        if env_token:
+            _TOKEN_CACHE[cache_key] = env_token
+            return env_token
+
+        # Strategy 3: Azure CLI (non-interactive, widely available)
+        cli_token = _try_azure_cli(self.fabric_tenant, resource, self.az_cmd)
+        if cli_token:
+            _TOKEN_CACHE[cache_key] = cli_token
+            return cli_token
+
+        # Strategy 4: Fabric CLI
+        fab_token = _try_fabric_cli()
+        if fab_token:
+            _TOKEN_CACHE[cache_key] = fab_token
+            return fab_token
+
+        # Strategy 5: MSAL device code (interactive — last resort)
+        msal_token = _try_msal_device_code(self.fabric_tenant, resource)
+        if msal_token:
+            _TOKEN_CACHE[cache_key] = msal_token
+            return msal_token
+
+        raise RuntimeError(
+            "No authentication method available.\n"
+            "  Options:\n"
+            f"    1. Set FABRIC_ACCESS_TOKEN env var\n"
+            f"    2. Pass token= to FabricLakehouse()\n"
+            f"    3. Install Fabric CLI and run 'fab login'\n"
+            f"    4. Install msal (pip install msal) for interactive login\n"
+            f"    5. Run 'az login --tenant {self.fabric_tenant} --use-device-code'"
         )
-        if result.returncode != 0:
-            raise RuntimeError(f"Auth failed: {result.stderr}")
-        token = result.stdout.strip()
-        if not token:
-            raise RuntimeError("Empty token returned from Azure CLI")
-        return token
 
     def list_tables(self):
-        token = self._get_token()
+        token = self._get_token(resource=STORAGE_RESOURCE)
         url = (
             f"https://onelake.dfs.fabric.microsoft.com/{self.workspace_guid}/"
             f"{self.lakehouse_guid}/Tables"
@@ -104,7 +190,7 @@ class FabricLakehouse:
         pyarrow.Table
         """
         from deltalake import DeltaTable
-        token = self._get_token()
+        token = self._get_token(resource=STORAGE_RESOURCE)
         storage_options = {
             "bearer_token": token,
             "use_fabric_endpoint": "true"
@@ -231,7 +317,43 @@ class FabricLakehouse:
         return result.fetchdf()
 
     @staticmethod
-    def list_lakehouses(workspace_guid=None, fabric_tenant=None, az_cmd=None):
+    def _get_fabric_api_token(fabric_tenant=None, token=None, az_cmd=None):
+        ft = fabric_tenant or _load_config()["fabric_tenant"]
+        cache_key = f"{ft}:{FABRIC_API_RESOURCE}"
+        if cache_key in _TOKEN_CACHE:
+            return _TOKEN_CACHE[cache_key]
+
+        if token:
+            _TOKEN_CACHE[cache_key] = token
+            return token
+
+        env_token = _try_env_var_token()
+        if env_token:
+            _TOKEN_CACHE[cache_key] = env_token
+            return env_token
+
+        cli_token = _try_azure_cli(ft, FABRIC_API_RESOURCE, az_cmd or AZ_CMD)
+        if cli_token:
+            _TOKEN_CACHE[cache_key] = cli_token
+            return cli_token
+
+        fab_token = _try_fabric_cli()
+        if fab_token:
+            _TOKEN_CACHE[cache_key] = fab_token
+            return fab_token
+
+        msal_token = _try_msal_device_code(ft, FABRIC_API_RESOURCE)
+        if msal_token:
+            _TOKEN_CACHE[cache_key] = msal_token
+            return msal_token
+
+        raise RuntimeError(
+            "No authentication method available for Fabric API.\n"
+            "  See FabricLakehouse() docs for options."
+        )
+
+    @staticmethod
+    def list_lakehouses(workspace_guid=None, fabric_tenant=None, token=None, az_cmd=None):
         """Discover all Lakehouses in the workspace via Fabric REST API.
 
         Returns a list of dicts with keys: displayName, id.
@@ -240,6 +362,8 @@ class FabricLakehouse:
         ----------
         workspace_guid : str, optional
         fabric_tenant : str, optional
+        token : str, optional
+            Existing access token for Fabric API.
         az_cmd : str, optional
 
         Returns
@@ -248,21 +372,12 @@ class FabricLakehouse:
         """
         cfg = _load_config()
         wg = workspace_guid or cfg["workspace_guid"]
-        ft = fabric_tenant or cfg["fabric_tenant"]
-        ac = az_cmd or AZ_CMD
-        result = subprocess.run(
-            f"{ac} account get-access-token "
-            f"--resource {FABRIC_API_RESOURCE} "
-            f"--tenant {ft} "
-            f"--query accessToken -o tsv",
-            capture_output=True, text=True, timeout=30, shell=True
+        t = FabricLakehouse._get_fabric_api_token(
+            fabric_tenant=fabric_tenant, token=token, az_cmd=az_cmd
         )
-        if result.returncode != 0:
-            raise RuntimeError(f"Fabric API auth failed: {result.stderr}")
-        token = result.stdout.strip()
         url = f"https://api.fabric.microsoft.com/v1/workspaces/{wg}/items"
         req = urllib.request.Request(url, headers={
-            "Authorization": f"Bearer {token}"
+            "Authorization": f"Bearer {t}"
         }, method="GET")
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode())

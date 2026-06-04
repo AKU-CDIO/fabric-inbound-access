@@ -1,5 +1,5 @@
 read_table <- function(conn, table_name, columns = NULL) {
-  token <- .get_fabric_token(conn$fabric_tenant)
+  token <- .get_fabric_token(conn$fabric_tenant, conn$access_token)
 
   list_url <- sprintf(
     "https://onelake.dfs.fabric.microsoft.com/%s/%s/Tables/%s?recursive=true&maxResults=1000&resource=filesystem",

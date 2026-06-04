@@ -15,7 +15,7 @@
 #' }
 #' @export
 list_tables <- function(conn) {
-  token <- .get_fabric_token(conn$fabric_tenant)
+  token <- .get_fabric_token(conn$fabric_tenant, conn$access_token)
   url <- sprintf(
     "https://onelake.dfs.fabric.microsoft.com/%s/%s/Tables?recursive=true&maxResults=1000&resource=filesystem",
     conn$workspace_id,

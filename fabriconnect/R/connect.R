@@ -1,7 +1,14 @@
 #' Connect to a Microsoft Fabric Lakehouse via OneLake
 #'
-#' Authenticates to OneLake using Azure CLI and returns a connection object
+#' Authenticates to OneLake and returns a connection object
 #' that can be used with \code{list_tables()} and \code{read_table()}.
+#' Supports multiple authentication methods (checked in order):
+#' \enumerate{
+#'   \item Explicit \code{access_token} parameter
+#'   \item \code{FABRIC_ACCESS_TOKEN} environment variable
+#'   \item Fabric CLI (\code{fab token})
+#'   \item Azure CLI (\code{az account get-access-token})
+#' }
 #' Defaults are read from the bundled configuration file.
 #'
 #' @param workspace_id   Character. The Fabric workspace GUID.
@@ -12,6 +19,8 @@
 #'   Can also be passed as the positional \code{lakehouse} argument.
 #' @param lakehouse      Alias for \code{lakehouse_name}. Either works.
 #' @param fabric_tenant  Character. The Fabric tenant ID.
+#' @param access_token   Character. An existing access token for OneLake
+#'   (\code{https://storage.azure.com}). When provided, no CLI is invoked.
 #'
 #' @return An object of class \code{"fabric_connection"} containing the
 #'   workspace and lakehouse identifiers.
@@ -21,6 +30,7 @@
 #' conn <- connect_to_fabric()
 #' conn <- connect_to_fabric(lakehouse_name = "HCW_fitbit_data")
 #' conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")      # same
+#' conn <- connect_to_fabric(access_token = Sys.getenv("FABRIC_ACCESS_TOKEN"))
 #' list_tables(conn)
 #' }
 #' @export
@@ -29,7 +39,8 @@ connect_to_fabric <- function(
   lakehouse_id   = NULL,
   lakehouse      = NULL,
   lakehouse_name = NULL,
-  fabric_tenant  = NULL
+  fabric_tenant  = NULL,
+  access_token   = NULL
 ) {
   cfg <- .load_config()
   if (is.null(workspace_id))  workspace_id  <- cfg$workspace_guid
@@ -42,7 +53,8 @@ connect_to_fabric <- function(
 
   if (!is.null(lakehouse_name)) {
     lakes <- list_lakehouses(workspace_id = workspace_id,
-                             fabric_tenant = fabric_tenant)
+                             fabric_tenant = fabric_tenant,
+                             access_token = access_token)
     idx <- which(lakes$name == lakehouse_name)
     if (length(idx) == 0) {
       stop("Lakehouse '", lakehouse_name, "' not found in workspace. ",
@@ -54,25 +66,49 @@ connect_to_fabric <- function(
 
   structure(
     list(workspace_id = workspace_id, lakehouse_id = lakehouse_id,
-         fabric_tenant = fabric_tenant),
+         fabric_tenant = fabric_tenant, access_token = access_token),
     class = "fabric_connection"
   )
 }
 
 #' @noRd
-.get_fabric_token <- function(tenant) {
-  cmd <- paste(
-    "az.cmd account get-access-token",
-    "--resource https://storage.azure.com",
-    "--tenant", tenant,
-    "--query accessToken -o tsv"
-  )
-  token <- system(cmd, intern = TRUE)
-  if (length(token) == 0 || nchar(token[1]) == 0) {
-    stop(paste0("Failed to obtain Azure access token. ",
-                "Make sure you are logged in with 'az login'."))
+.get_fabric_token <- function(tenant, access_token = NULL) {
+  # 1. Explicit token passed by user
+  if (!is.null(access_token) && nchar(access_token) > 0) {
+    return(access_token)
   }
-  token[1]
+  # 2. Environment variable
+  env_token <- Sys.getenv("FABRIC_ACCESS_TOKEN")
+  if (nchar(env_token) > 0) {
+    return(env_token)
+  }
+  # 3. Fabric CLI
+  fab_token <- tryCatch(
+    system("fab token", intern = TRUE),
+    warning = function(w) NULL, error = function(e) NULL
+  )
+  if (!is.null(fab_token) && length(fab_token) > 0 && nchar(fab_token[1]) > 0) {
+    return(fab_token[1])
+  }
+  # 4. Azure CLI (existing fallback)
+  token <- system(
+    paste("az.cmd account get-access-token",
+          "--resource https://storage.azure.com",
+          "--tenant", tenant,
+          "--query accessToken -o tsv"),
+    intern = TRUE
+  )
+  if (length(token) > 0 && nchar(token[1]) > 0) {
+    return(token[1])
+  }
+  stop(
+    "No authentication method available.\n",
+    "  Options:\n",
+    "    1. Pass access_token = \"...\" to connect_to_fabric()\n",
+    "    2. Set FABRIC_ACCESS_TOKEN environment variable\n",
+    "    3. Install Fabric CLI and run 'fab login'\n",
+    "    4. Run 'az login --tenant ", tenant, " --use-device-code'"
+  )
 }
 
 #' @noRd
