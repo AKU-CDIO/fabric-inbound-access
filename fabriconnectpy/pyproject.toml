@@ -19,5 +19,7 @@ dependencies = [
 pandas = ["pandas"]
 sql = ["duckdb"]
 
-[project.gui-scripts]
-fabricpy = "fabricpy.client:main"
+[tool.setuptools.package-data]
+fabricpy = ["config.json"]
+
+

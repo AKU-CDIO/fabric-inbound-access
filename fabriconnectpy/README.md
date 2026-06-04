@@ -36,17 +36,17 @@ df = lh.to_pandas("dimenrolledparticipants")
 
 # Read only needed columns (predicate pushdown — less network)
 df = lh.to_pandas("factfitbitsleeplogs",
-                   columns=["ParticipantKey", "MinutesAsleep"])
+                   columns=["ParticipantIdentifier", "MinutesAsleep"])
 
 # SQL with column pruning
 df = lh.sql("""
-    SELECT p.ParticipantIdentifier, count(s.Skey) AS n
+    SELECT p.ParticipantIdentifier, count(*) AS n
     FROM dimenrolledparticipants p
-    JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
+    JOIN factfitbitsleeplogs s ON p.ParticipantIdentifier = s.ParticipantIdentifier
     GROUP BY p.ParticipantIdentifier""",
   table_columns={
-    "dimenrolledparticipants": ["Skey", "ParticipantIdentifier"],
-    "factfitbitsleeplogs":     ["Skey", "ParticipantKey"]
+    "dimenrolledparticipants": ["ParticipantIdentifier"],
+    "factfitbitsleeplogs":     ["ParticipantIdentifier"]
   })
 
 # Discover and connect by name

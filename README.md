@@ -123,14 +123,14 @@ query_tables(conn, "SELECT count(*) FROM dimenrolledparticipants")
 ```r
 result <- query_tables(conn, "
   SELECT p.ParticipantIdentifier,
-         COUNT(s.Skey)        AS sleep_logs,
-         AVG(s.MinutesAsleep) AS avg_min_asleep
+         COUNT(*)              AS sleep_logs,
+         AVG(s.MinutesAsleep)  AS avg_min_asleep
   FROM dimenrolledparticipants p
-  JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
+  JOIN factfitbitsleeplogs s ON p.ParticipantIdentifier = s.ParticipantIdentifier
   GROUP BY p.ParticipantIdentifier",
   table_columns = list(
-    dimenrolledparticipants = c("Skey", "ParticipantIdentifier"),
-    factfitbitsleeplogs     = c("Skey", "ParticipantKey", "MinutesAsleep")
+    dimenrolledparticipants = c("ParticipantIdentifier"),
+    factfitbitsleeplogs     = c("ParticipantIdentifier", "MinutesAsleep")
   ))
 ```
 

@@ -160,9 +160,14 @@ class FabricLakehouse:
         import re
         con = duckdb.connect()
         tables = set()
+        # Extract table names from FROM (handles comma-separated) and JOIN
         for kw in ("FROM", "JOIN"):
-            for m in re.finditer(rf"\b{kw}\s+(\w+)", query, re.IGNORECASE):
-                tables.add(m.group(1))
+            for m in re.finditer(rf"\b{kw}\s+([\w\s,]+?)(?:\s+(?:AS\s+)?\w+\s*(?:ON|\s|$)|$|\s+(?:WHERE|GROUP|ORDER|HAVING|LIMIT))", query, re.IGNORECASE):
+                parts = re.split(r"\s*,\s*", m.group(1).strip())
+                for part in parts:
+                    tbl = part.split()[0].strip()
+                    if tbl and tbl.upper() not in ("SELECT", "WHERE", "AND", "OR", "ON", "AS"):
+                        tables.add(tbl)
         for tbl in tables:
             cols = table_columns.get(tbl) if table_columns else None
             df = self.to_pandas(tbl, columns=cols)

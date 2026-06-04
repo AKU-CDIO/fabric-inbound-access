@@ -28,11 +28,11 @@ head(df[, 1:6])
 # ---- SQL JOIN ----
 result <- query_tables(conn, "
     SELECT p.ParticipantIdentifier, p.Gender, p.Age,
-           COUNT(s.Skey)        AS sleep_logs,
-           AVG(s.MinutesAsleep) AS avg_min_asleep,
-           AVG(s.MinutesInBed)  AS avg_min_in_bed
+           COUNT(*)              AS sleep_logs,
+           AVG(s.MinutesAsleep)  AS avg_min_asleep,
+           AVG(s.TimeInBed)      AS avg_min_in_bed
     FROM dimenrolledparticipants p
-    JOIN factfitbitsleeplogs s ON p.Skey = s.ParticipantKey
+    JOIN factfitbitsleeplogs s ON p.ParticipantIdentifier = s.ParticipantIdentifier
     GROUP BY p.ParticipantIdentifier, p.Gender, p.Age
     ORDER BY sleep_logs DESC
 ")

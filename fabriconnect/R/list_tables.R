@@ -28,9 +28,12 @@ list_tables <- function(conn) {
   ))
   httr::stop_for_status(resp)
   data <- httr::content(resp)
-  paths <- sapply(data$paths, `[[`, "name")
-  paths <- grep("/_delta_log/", paths, value = TRUE, invert = TRUE)
-  tables <- unique(sub("/.*", "", sub(".*/Tables/", "", paths)))
+  if (is.null(data$paths) || length(data$paths) == 0) {
+    return(character(0))
+  }
+  all_names <- vapply(data$paths, function(x) if (is.null(x$name)) "" else x$name, character(1))
+  all_names <- grep("/_delta_log/", all_names, value = TRUE, invert = TRUE)
+  tables <- unique(sub("/.*", "", sub(".*/Tables/", "", all_names)))
   tables <- tables[nchar(tables) > 0 & !grepl("^_", tables)]
   sort(tables)
 }

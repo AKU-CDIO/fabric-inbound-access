@@ -1,39 +1,35 @@
-import pyodbc
+"""
+Connect to Fabric Lakehouse via OneLake HTTPS API (no TDS/ODBC needed).
 
-# Configuration
-lakehouse_endpoint = "fis5jjpzajqe5fxqs4z3vlsjde-zgopmz6jacoezkc3hd6da52lpm.datawarehouse.fabric.microsoft.com"
-database_name = "uzima_db_backup"
-user_id = "derick.imbati@aku.edu"
+Uses Azure CLI device-code authentication instead of hardcoded credentials.
+All traffic is HTTPS (port 443) — bypasses the workspace IP firewall TDS bug.
 
-# Connection String
-conn_str = (
-    f"Driver={{ODBC Driver 17 for SQL Server}};"
-    f"Server={lakehouse_endpoint};"
-    f"Database={database_name};"
-    f"UID={user_id};"
-    f"PWD=Pass@123;"
-    f"Authentication=ActiveDirectoryPassword;"
-    f"Encrypt=yes;"
-    f"TrustServerCertificate=yes;"
-    f"Port=1433;"
-    f"Timeout=30;"
-)
+Requirements:
+    pip install fabricpy[pandas]
+    az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
+"""
 
-try:
-    # Establish connection
-    conn = pyodbc.connect(conn_str)
-    cursor = conn.cursor()
-    print("Connected to Fabric Lakehouse SQL endpoint")
+from fabricpy import FabricLakehouse
 
-    # List tables (Equivalent to the 'tables' call in your R snippet)
-    print("\nAvailable Tables:")
-    for table_info in cursor.tables(tableType='TABLE'):
-        print(table_info.table_name)
+def main():
+    # Default Lakehouse (uzima_db_backup) from bundled config.json
+    lh = FabricLakehouse()
 
-except Exception as e:
-    print(f"Error connecting to database: {e}")
+    print("Connected to Fabric Lakehouse via OneLake HTTPS\n")
 
-finally:
-    # Clean up connection
-    if 'conn' in locals():
-        conn.close()
+    # List tables
+    tables = lh.list_tables()
+    print(f"Available Tables ({len(tables)}):")
+    for t in tables:
+        print(f"  - {t}")
+
+    # Read sample table
+    if tables:
+        sample = tables[4] if len(tables) > 4 else tables[0]
+        print(f"\nReading '{sample}' (first 5 rows)...")
+        df = lh.to_pandas(sample)
+        print(f"  {len(df)} rows, {len(df.columns)} cols")
+        print(df.head())
+
+if __name__ == "__main__":
+    main()

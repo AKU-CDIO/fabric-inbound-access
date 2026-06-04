@@ -49,7 +49,7 @@ The OneLake Delta table workaround **does work** for this Lakehouse. Two package
 ### R Package: `fabriconnect`
 - Location: `connectToFabricVM/fabriconnect/`
 - Install: `R CMD INSTALL fabriconnect/` (or devtools)
-- Uses `AzureStor` + `arrow` — no TDS needed
+- Uses Azure CLI auth + `arrow` — no TDS needed
 - Functions: `connect_to_fabric()`, `list_tables()`, `read_table()`
 
 ### Python Library: `fabricpy`

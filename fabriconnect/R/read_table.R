@@ -12,7 +12,11 @@ read_table <- function(conn, table_name, columns = NULL) {
   ))
   httr::stop_for_status(resp)
   data <- httr::content(resp)
-  parquet_paths <- grep("\\.parquet$", sapply(data$paths, `[[`, "name"), value = TRUE)
+  if (is.null(data$paths) || length(data$paths) == 0) {
+    stop("No files found for table '", table_name, "'")
+  }
+  all_names <- vapply(data$paths, function(x) if (is.null(x$name)) "" else x$name, character(1))
+  parquet_paths <- grep("\\.parquet$", all_names, value = TRUE)
   parquet_paths <- grep("/_delta_log/", parquet_paths, value = TRUE, invert = TRUE)
   if (length(parquet_paths) == 0) {
     stop("No parquet files found for table '", table_name, "'")

@@ -4,17 +4,24 @@ query_tables <- function(conn, sql, table_columns = NULL) {
   }
   is_multi <- !inherits(conn, "fabric_connection")
 
-  tables <- unique(c(
-    regmatches(sql, gregexpr("(?i)\\bFROM\\s+([\\w.]+)", sql, perl = TRUE))[[1]],
-    regmatches(sql, gregexpr("(?i)\\bJOIN\\s+([\\w.]+)", sql, perl = TRUE))[[1]]
-  ))
-  tables <- gsub("(?i)^(FROM|JOIN)\\s+", "", tables, perl = TRUE)
-  skip <- c("", "SELECT", "WHERE", "AND", "OR", "ON", "GROUP", "ORDER", "HAVING", "LIMIT", "AS",
-            "INNER", "LEFT", "RIGHT", "FULL", "OUTER", "CROSS", "NATURAL", "DISTINCT", "TOP",
-            "BY", "DESC", "ASC", "NOT", "IN", "IS", "NULL", "LIKE", "BETWEEN", "EXISTS",
-            "COUNT", "SUM", "AVG", "MIN", "MAX", "CAST", "COALESCE", "NULLIF",
-            "TRUE", "FALSE", "WHEN", "THEN", "ELSE", "END", "CASE")
-  tables <- setdiff(tables, skip)
+  # Extract table references from FROM and JOIN clauses.
+  # For FROM: capture everything up to the next SQL clause keyword, then parse for table names.
+  tables <- character(0)
+
+  from_expr <- regmatches(sql, regexec(
+    "(?i)\\bFROM\\s+(.+?)(?=\\s+(?:WHERE|GROUP|ORDER|HAVING|LIMIT|JOIN|CROSS|INNER|LEFT|RIGHT|FULL|UNION|EXCEPT|INTERSECT|$))",
+    sql, perl = TRUE))[[1]][2]
+  if (!is.na(from_expr)) {
+    from_tables <- trimws(strsplit(from_expr, ",")[[1]])
+    from_tables <- gsub("\\s+(AS\\s+)?\\w+.*$", "", from_tables, perl = TRUE)
+    tables <- c(tables, from_tables)
+  }
+
+  join_matches <- regmatches(sql, gregexpr("(?i)\\bJOIN\\s+([\\w.]+)", sql, perl = TRUE))[[1]]
+  join_tables <- gsub("(?i)^JOIN\\s+", "", join_matches)
+  tables <- unique(c(tables, join_tables))
+  # Remove empty strings
+  tables <- tables[nchar(tables) > 0]
 
   db <- DBI::dbConnect(duckdb::duckdb())
   on.exit(DBI::dbDisconnect(db, shutdown = FALSE))
