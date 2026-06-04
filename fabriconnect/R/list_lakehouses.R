@@ -61,13 +61,6 @@ list_lakehouses <- function(
   if (nchar(env_token) > 0) {
     return(env_token)
   }
-  fab_token <- tryCatch(
-    system("fab token", intern = TRUE),
-    warning = function(w) NULL, error = function(e) NULL
-  )
-  if (!is.null(fab_token) && length(fab_token) > 0 && nchar(fab_token[1]) > 0) {
-    return(fab_token[1])
-  }
   token <- system(
     paste("az.cmd account get-access-token",
           "--resource https://api.fabric.microsoft.com",
@@ -83,7 +76,6 @@ list_lakehouses <- function(
     "  Options:\n",
     "    1. Pass access_token = \"...\" to list_lakehouses()\n",
     "    2. Set FABRIC_ACCESS_TOKEN environment variable\n",
-    "    3. Install Fabric CLI and run 'fab login'\n",
-    "    4. Run 'az login --tenant ", tenant, " --use-device-code'"
+    "    3. Run 'az login --tenant ", tenant, " --use-device-code'"
   )
 }

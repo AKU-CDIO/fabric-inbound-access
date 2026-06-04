@@ -9,7 +9,7 @@ R and Python packages for reading Microsoft Fabric Lakehouse data over HTTPS, by
 
 ### Authentication (choose one)
 
-The packages try these methods in order: explicit token → `FABRIC_ACCESS_TOKEN` env var → Fabric CLI → Azure CLI.
+The packages try these methods in order: explicit token → `FABRIC_ACCESS_TOKEN` env var → Azure CLI → interactive pop-up.
 
 **1. Azure CLI** (recommended if you have Azure access):
 
@@ -17,20 +17,13 @@ The packages try these methods in order: explicit token → `FABRIC_ACCESS_TOKEN
 az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
 ```
 
-**2. Fabric CLI** (for Fabric BI portal users without Azure):
-
-```bash
-# https://github.com/microsoft/fabric-cli
-fab login
-```
-
-**3. Environment variable** (CI / headless):
+**2. Environment variable** (CI / headless):
 
 ```bash
 export FABRIC_ACCESS_TOKEN="<your-token>"
 ```
 
-**4. Pass token directly** (in code):
+**3. Pass token directly** (in code):
 
 ```python
 lh = FabricLakehouse(token="<your-token>")
@@ -40,9 +33,9 @@ lh = FabricLakehouse(token="<your-token>")
 conn <- connect_to_fabric(access_token = "<your-token>")
 ```
 
-**5. Interactive pop-up** (requires `pip install msal`):
+**4. Interactive pop-up** (Python only, requires `pip install msal`):
 
-If no other method works, `fabricpy` will prompt via browser-based device code login automatically.
+Opens a browser-based device code login for users who can't use Azure CLI.
 
 ---
 

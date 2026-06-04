@@ -82,15 +82,7 @@ connect_to_fabric <- function(
   if (nchar(env_token) > 0) {
     return(env_token)
   }
-  # 3. Fabric CLI
-  fab_token <- tryCatch(
-    system("fab token", intern = TRUE),
-    warning = function(w) NULL, error = function(e) NULL
-  )
-  if (!is.null(fab_token) && length(fab_token) > 0 && nchar(fab_token[1]) > 0) {
-    return(fab_token[1])
-  }
-  # 4. Azure CLI (existing fallback)
+  # 3. Azure CLI (existing fallback)
   token <- system(
     paste("az.cmd account get-access-token",
           "--resource https://storage.azure.com",
@@ -106,8 +98,7 @@ connect_to_fabric <- function(
     "  Options:\n",
     "    1. Pass access_token = \"...\" to connect_to_fabric()\n",
     "    2. Set FABRIC_ACCESS_TOKEN environment variable\n",
-    "    3. Install Fabric CLI and run 'fab login'\n",
-    "    4. Run 'az login --tenant ", tenant, " --use-device-code'"
+    "    3. Run 'az login --tenant ", tenant, " --use-device-code'"
   )
 }
 

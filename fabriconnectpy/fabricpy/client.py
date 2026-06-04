@@ -15,7 +15,6 @@ def _load_config():
     return _CONFIG
 
 AZ_CMD = "az.cmd"
-FAB_CMD = "fab"
 STORAGE_RESOURCE = "https://storage.azure.com"
 FABRIC_API_RESOURCE = "https://api.fabric.microsoft.com"
 
@@ -31,16 +30,6 @@ def _try_azure_cli(tenant, resource, az_cmd):
         f"--resource {resource} "
         f"--tenant {tenant} "
         f"--query accessToken -o tsv",
-        capture_output=True, text=True, timeout=30, shell=True
-    )
-    if result.returncode != 0:
-        return None
-    token = result.stdout.strip()
-    return token if token else None
-
-def _try_fabric_cli():
-    result = subprocess.run(
-        f"{FAB_CMD} token",
         capture_output=True, text=True, timeout=30, shell=True
     )
     if result.returncode != 0:
@@ -128,13 +117,7 @@ class FabricLakehouse:
             _TOKEN_CACHE[cache_key] = cli_token
             return cli_token
 
-        # Strategy 4: Fabric CLI
-        fab_token = _try_fabric_cli()
-        if fab_token:
-            _TOKEN_CACHE[cache_key] = fab_token
-            return fab_token
-
-        # Strategy 5: MSAL device code (interactive — last resort)
+        # Strategy 4: MSAL device code (interactive pop-up — users sign in with email/password)
         msal_token = _try_msal_device_code(self.fabric_tenant, resource)
         if msal_token:
             _TOKEN_CACHE[cache_key] = msal_token
@@ -143,11 +126,10 @@ class FabricLakehouse:
         raise RuntimeError(
             "No authentication method available.\n"
             "  Options:\n"
-            f"    1. Set FABRIC_ACCESS_TOKEN env var\n"
-            f"    2. Pass token= to FabricLakehouse()\n"
-            f"    3. Install Fabric CLI and run 'fab login'\n"
-            f"    4. Install msal (pip install msal) for interactive login\n"
-            f"    5. Run 'az login --tenant {self.fabric_tenant} --use-device-code'"
+            f"    1. Pass token= to FabricLakehouse()\n"
+            f"    2. Set FABRIC_ACCESS_TOKEN env var\n"
+            f"    3. Run 'az login --tenant {self.fabric_tenant} --use-device-code'\n"
+            f"    4. Install msal (pip install msal) for interactive pop-up login"
         )
 
     def list_tables(self):
@@ -336,11 +318,6 @@ class FabricLakehouse:
         if cli_token:
             _TOKEN_CACHE[cache_key] = cli_token
             return cli_token
-
-        fab_token = _try_fabric_cli()
-        if fab_token:
-            _TOKEN_CACHE[cache_key] = fab_token
-            return fab_token
 
         msal_token = _try_msal_device_code(ft, FABRIC_API_RESOURCE)
         if msal_token:
