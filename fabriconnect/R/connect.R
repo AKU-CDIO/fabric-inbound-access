@@ -6,8 +6,8 @@
 #' \enumerate{
 #'   \item Explicit \code{access_token} parameter
 #'   \item \code{FABRIC_ACCESS_TOKEN} environment variable
-#'   \item Fabric CLI (\code{fab token})
 #'   \item Azure CLI (\code{az account get-access-token})
+#'   \item Interactive device-code login (sign in with your email — MFA supported)
 #' }
 #' Defaults are read from the bundled configuration file.
 #'
@@ -82,7 +82,7 @@ connect_to_fabric <- function(
   if (nchar(env_token) > 0) {
     return(env_token)
   }
-  # 3. Azure CLI (existing fallback)
+  # 3. Azure CLI
   token <- system(
     paste("az.cmd account get-access-token",
           "--resource https://storage.azure.com",
@@ -93,13 +93,88 @@ connect_to_fabric <- function(
   if (length(token) > 0 && nchar(token[1]) > 0) {
     return(token[1])
   }
+  # 4. Interactive device-code login (MFA-capable — sign in with email)
+  msal_token <- .try_msal_device_code(tenant, "https://storage.azure.com")
+  if (!is.null(msal_token)) {
+    return(msal_token)
+  }
   stop(
     "No authentication method available.\n",
     "  Options:\n",
     "    1. Pass access_token = \"...\" to connect_to_fabric()\n",
     "    2. Set FABRIC_ACCESS_TOKEN environment variable\n",
-    "    3. Run 'az login --tenant ", tenant, " --use-device-code'"
+    "    3. Run 'az login --tenant ", tenant, " --use-device-code'\n",
+    "    4. Interactive device-code login (automatic — just follow the prompt)"
   )
+}
+
+#' @noRd
+.try_msal_device_code <- function(tenant, resource) {
+  client_id <- "1950a258-227b-4e31-a9cf-717495945fc2"
+  url_base <- sprintf("https://login.microsoftonline.com/%s", tenant)
+
+  # Step 1: Initiate device-code flow
+  dev_resp <- httr::POST(
+    sprintf("%s/oauth2/v2.0/devicecode", url_base),
+    body = list(
+      client_id = client_id,
+      scope = sprintf("%s/.default", resource)
+    ),
+    encode = "form"
+  )
+  if (httr::status_code(dev_resp) != 200L) {
+    return(NULL)
+  }
+  dev <- httr::content(dev_resp)
+  if (is.null(dev$user_code)) {
+    return(NULL)
+  }
+
+  message(
+    "\n====================  SIGN IN REQUIRED  ====================\n",
+    "To access the Fabric Lakehouse, sign in with your email.\n",
+    "This supports MFA (e.g. Outlook / Microsoft Authenticator).\n",
+    "\n  1. Open: ", dev$verification_uri, "\n",
+    "  2. Enter code: ", dev$user_code, "\n",
+    "============================================================\n"
+  )
+
+  interval <- if (is.null(dev$interval)) 5L else dev$interval
+
+  # Step 2: Poll for token
+  for (i in 1:120) {
+    Sys.sleep(interval)
+    tok_resp <- httr::POST(
+      sprintf("%s/oauth2/v2.0/token", url_base),
+      body = list(
+        grant_type = "urn:ietf:params:oauth:grant-type:device_code",
+        client_id = client_id,
+        device_code = dev$device_code
+      ),
+      encode = "form"
+    )
+    tok <- httr::content(tok_resp)
+
+    if (!is.null(tok$access_token)) {
+      message("Authentication successful.\n")
+      return(tok$access_token)
+    }
+
+    err <- tok$error
+    if (is.null(err) || identical(err, "authorization_pending")) {
+      next
+    }
+    if (identical(err, "expired_token")) {
+      message("Device code expired. Run connect_to_fabric() again to retry.")
+      return(NULL)
+    }
+    if (identical(err, "access_denied")) {
+      message("Authentication cancelled.")
+      return(NULL)
+    }
+  }
+  message("Authentication timed out (120 seconds). Run connect_to_fabric() to retry.")
+  NULL
 }
 
 #' @noRd

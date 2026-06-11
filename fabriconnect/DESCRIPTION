@@ -5,7 +5,7 @@ Authors@R: person("Derick", "Imbati", email = "derick.imbati@aku.edu", role = c(
              comment = "CDIO, AKU")
 Description: Provides functions to connect to Microsoft Fabric Lakehouses
     via the OneLake HTTPS API, bypassing the TDS/IP firewall bug.
-    Uses Azure CLI for authentication and arrow for parquet reading.
+    Uses Azure CLI or interactive device-code sign-in (email/MFA) for authentication and arrow for parquet reading.
 Depends: R (>= 4.0)
 Imports: arrow, utils, DBI, httr, jsonlite
 Suggests: duckdb, dplyr, callr

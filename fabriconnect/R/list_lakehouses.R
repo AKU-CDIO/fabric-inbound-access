@@ -6,8 +6,8 @@
 #' \enumerate{
 #'   \item Explicit \code{access_token} parameter
 #'   \item \code{FABRIC_ACCESS_TOKEN} environment variable
-#'   \item Fabric CLI (\code{fab token})
 #'   \item Azure CLI (\code{az account get-access-token})
+#'   \item Interactive device-code login (sign in with your email — MFA supported)
 #' }
 #' Defaults are read from the bundled configuration file.
 #'
@@ -70,6 +70,10 @@ list_lakehouses <- function(
   )
   if (length(token) > 0 && nchar(token[1]) > 0) {
     return(token[1])
+  }
+  msal_token <- .try_msal_device_code(tenant, "https://api.fabric.microsoft.com")
+  if (!is.null(msal_token)) {
+    return(msal_token)
   }
   stop(
     "No authentication method available for Fabric API.\n",

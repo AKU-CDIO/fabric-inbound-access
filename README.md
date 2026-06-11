@@ -9,12 +9,20 @@ R and Python packages for reading Microsoft Fabric Lakehouse data over HTTPS, by
 
 ### Authentication (choose one)
 
-The packages try these methods in order: explicit token → `FABRIC_ACCESS_TOKEN` env var → Azure CLI → interactive pop-up.
+The packages try these methods in order: explicit token → `FABRIC_ACCESS_TOKEN` env var → Azure CLI → interactive device-code sign-in (email + MFA).
 
-**1. Azure CLI** (recommended if you have Azure access):
+**1. Interactive sign-in** (recommended — works like an ODBC connection):
 
-```bash
-az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
+When you call `connect_to_fabric()` without a token, a prompt appears asking you to open a browser and sign in with your email. MFA (Microsoft Authenticator, etc.) is fully supported — no Azure CLI installation required.
+
+```r
+library(fabriconnect)
+conn <- connect_to_fabric()   # <-- prompts for email sign-in with MFA
+```
+
+```python
+from fabricpy import FabricLakehouse
+lh = FabricLakehouse()        # <-- prompts for email sign-in with MFA
 ```
 
 **2. Environment variable** (CI / headless):
@@ -33,9 +41,11 @@ lh = FabricLakehouse(token="<your-token>")
 conn <- connect_to_fabric(access_token = "<your-token>")
 ```
 
-**4. Interactive pop-up** (Python only, requires `pip install msal`):
+**4. Azure CLI** (advanced / automation):
 
-Opens a browser-based device code login for users who can't use Azure CLI.
+```bash
+az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
+```
 
 ---
 
@@ -261,7 +271,7 @@ update_fabriconnect()   # uses a fresh R sub-process; no restart needed
 
 ## Architecture
 
-1. **Authentication** — `az.cmd` obtains an OAuth2 token for `https://storage.azure.com` scoped to the Fabric tenant.
+1. **Authentication** — Uses Microsoft identity platform device-code flow (or Azure CLI) to obtain an OAuth2 token for `https://storage.azure.com` scoped to the Fabric tenant. The device-code flow works like an ODBC connection — you sign in with your email and MFA in your browser.
 2. **Metadata** — OneLake ADLS Gen2 DFS REST API (`onelake.dfs.fabric.microsoft.com`) lists Delta table directories.
 3. **Data** — Parquet files are fetched over HTTPS and read in-memory:
    - **R**: `httr::GET()` → `arrow::read_parquet(raw)` — no temp files.
@@ -276,8 +286,8 @@ All communication is HTTPS (443). No TDS (1433) is used.
 
 | Problem | Resolution |
 |---------|------------|
-| `Failed to obtain Azure access token` | Re-authenticate: `az login --tenant a5d4252a-... --use-device-code` |
-| `401 Unauthorized` | Token expired. Re-run `az login`. |
+| `Failed to obtain Azure access token` | Re-run `connect_to_fabric()` — you will be prompted to sign in again. |
+| `401 Unauthorized` | Token expired. Re-run `connect_to_fabric()`. |
 | `No parquet files found` | Verify table name with `list_tables()`. Table names are case-sensitive. |
 | Package install says `...is in use and will not be installed` | Restart R and re-run the install command. |
 | `duckdb` not found | Install it: `install.packages("duckdb")` (R) or `pip install duckdb` (Python). |
