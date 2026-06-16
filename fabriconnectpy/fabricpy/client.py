@@ -89,7 +89,7 @@ def _try_msal_device_code(tenant, resource):
         authority=f"https://login.microsoftonline.com/{tenant}"
     )
     flow = app.initiate_device_flow(
-        scopes=[f"{resource}/.default", "offline_access"]
+        scopes=[f"{resource}/.default"]
     )
     if "user_code" not in flow:
         return None
