@@ -144,9 +144,14 @@ connect_to_fabric <- function(
     "\n====================  SIGN IN REQUIRED  ====================\n",
     "To access the Fabric Lakehouse, sign in with your email.\n",
     "This supports MFA (e.g. Outlook / Microsoft Authenticator).\n",
-    "\n  1. Open: ", dev$verification_uri, "\n",
-    "  2. Enter code: ", dev$user_code, "\n",
+    "\n  Opening your browser to: ", dev$verification_uri, "\n",
+    "  Enter code: ", dev$user_code, "\n",
     "============================================================\n"
+  )
+  tryCatch(
+    utils::browseURL(dev$verification_uri),
+    error = function(e) NULL,
+    warning = function(w) NULL
   )
 
   interval <- if (is.null(dev$interval)) 5L else dev$interval
