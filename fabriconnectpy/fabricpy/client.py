@@ -3,6 +3,8 @@ import json
 import urllib.request
 import os
 import webbrowser
+import time
+import urllib.parse
 
 _CONFIG = None
 
@@ -20,6 +22,43 @@ STORAGE_RESOURCE = "https://storage.azure.com"
 FABRIC_API_RESOURCE = "https://api.fabric.microsoft.com"
 
 _TOKEN_CACHE = {}
+
+def _now():
+    return time.time()
+
+def _is_expired(entry):
+    return _now() >= entry.get("expires_at", 0)
+
+def _make_entry(access_token, refresh_token=None):
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_at": _now() + 3300,
+    }
+
+def _refresh_token(tenant, refresh_token, resource):
+    data = urllib.parse.urlencode({
+        "grant_type": "refresh_token",
+        "client_id": "1950a258-227b-4e31-a9cf-717495945fc2",
+        "refresh_token": refresh_token,
+        "scope": f"{resource}/.default offline_access",
+    }).encode()
+    req = urllib.request.Request(
+        f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            tok = json.loads(resp.read().decode())
+    except Exception:
+        return None
+    if "access_token" not in tok:
+        return None
+    return _make_entry(
+        tok["access_token"],
+        tok.get("refresh_token", refresh_token),
+    )
 
 def _try_env_var_token():
     token = os.environ.get("FABRIC_ACCESS_TOKEN") or os.environ.get("AZURE_ACCESS_TOKEN")
@@ -49,7 +88,9 @@ def _try_msal_device_code(tenant, resource):
         "1950a258-227b-4e31-a9cf-717495945fc2",
         authority=f"https://login.microsoftonline.com/{tenant}"
     )
-    flow = app.initiate_device_flow(scopes=[f"{resource}/.default"])
+    flow = app.initiate_device_flow(
+        scopes=[f"{resource}/.default", "offline_access"]
+    )
     if "user_code" not in flow:
         return None
     print("\n====================  SIGN IN REQUIRED  ====================", file=sys.stderr)
@@ -62,17 +103,18 @@ def _try_msal_device_code(tenant, resource):
         webbrowser.open(flow["verification_uri"])
     except Exception:
         pass
-    result = {"token": None}
+    result = {"access_token": None, "refresh_token": None}
     def acquire():
         r = app.acquire_token_by_device_flow(flow)
         if "access_token" in r:
-            result["token"] = r["access_token"]
+            result["access_token"] = r["access_token"]
+            result["refresh_token"] = r.get("refresh_token")
     t = threading.Thread(target=acquire, daemon=True)
     t.start()
     t.join(timeout=120)
-    if result["token"]:
+    if result["access_token"]:
         print("Authentication successful.\n", file=sys.stderr)
-    return result["token"]
+    return result if result["access_token"] else None
 
 class FabricLakehouse:
     def __init__(self, workspace_guid=None, lakehouse_guid=None,
@@ -109,31 +151,40 @@ class FabricLakehouse:
 
     def _get_token(self, resource=STORAGE_RESOURCE):
         cache_key = f"{self.fabric_tenant}:{resource}"
-        if cache_key in _TOKEN_CACHE:
-            return _TOKEN_CACHE[cache_key]
+        entry = _TOKEN_CACHE.get(cache_key)
 
-        # Strategy 1: explicitly provided token
+        if entry is not None:
+            if not _is_expired(entry):
+                return entry["access_token"]
+            if entry.get("refresh_token"):
+                refreshed = _refresh_token(
+                    self.fabric_tenant, entry["refresh_token"], resource
+                )
+                if refreshed is not None:
+                    _TOKEN_CACHE[cache_key] = refreshed
+                    return refreshed["access_token"]
+
         if self._explicit_token:
-            _TOKEN_CACHE[cache_key] = self._explicit_token
+            _TOKEN_CACHE[cache_key] = _make_entry(self._explicit_token)
             return self._explicit_token
 
-        # Strategy 2: environment variable
         env_token = _try_env_var_token()
         if env_token:
-            _TOKEN_CACHE[cache_key] = env_token
+            _TOKEN_CACHE[cache_key] = _make_entry(env_token)
             return env_token
 
-        # Strategy 3: MSAL device code (interactive — sign in with email + MFA)
-        msal_token = _try_msal_device_code(self.fabric_tenant, resource)
-        if msal_token:
-            _TOKEN_CACHE[cache_key] = msal_token
-            return msal_token
+        msal_result = _try_msal_device_code(self.fabric_tenant, resource)
+        if msal_result is not None:
+            entry = _make_entry(
+                msal_result["access_token"], msal_result["refresh_token"]
+            )
+            _TOKEN_CACHE[cache_key] = entry
+            return entry["access_token"]
 
-        # Strategy 4: Azure CLI (fallback for automation / CI)
-        cli_token = _try_azure_cli(self.fabric_tenant, resource, self.az_cmd)
-        if cli_token:
-            _TOKEN_CACHE[cache_key] = cli_token
-            return cli_token
+        cli_result = _try_azure_cli(self.fabric_tenant, resource, self.az_cmd)
+        if cli_result:
+            _TOKEN_CACHE[cache_key] = _make_entry(cli_result)
+            return cli_result
 
         raise RuntimeError(
             "No authentication method available.\n"
@@ -314,27 +365,39 @@ class FabricLakehouse:
     def _get_fabric_api_token(fabric_tenant=None, token=None, az_cmd=None):
         ft = fabric_tenant or _load_config()["fabric_tenant"]
         cache_key = f"{ft}:{FABRIC_API_RESOURCE}"
-        if cache_key in _TOKEN_CACHE:
-            return _TOKEN_CACHE[cache_key]
+        entry = _TOKEN_CACHE.get(cache_key)
+
+        if entry is not None:
+            if not _is_expired(entry):
+                return entry["access_token"]
+            if entry.get("refresh_token"):
+                refreshed = _refresh_token(ft, entry["refresh_token"],
+                                           FABRIC_API_RESOURCE)
+                if refreshed is not None:
+                    _TOKEN_CACHE[cache_key] = refreshed
+                    return refreshed["access_token"]
 
         if token:
-            _TOKEN_CACHE[cache_key] = token
+            _TOKEN_CACHE[cache_key] = _make_entry(token)
             return token
 
         env_token = _try_env_var_token()
         if env_token:
-            _TOKEN_CACHE[cache_key] = env_token
+            _TOKEN_CACHE[cache_key] = _make_entry(env_token)
             return env_token
 
-        msal_token = _try_msal_device_code(ft, FABRIC_API_RESOURCE)
-        if msal_token:
-            _TOKEN_CACHE[cache_key] = msal_token
-            return msal_token
+        msal_result = _try_msal_device_code(ft, FABRIC_API_RESOURCE)
+        if msal_result is not None:
+            entry = _make_entry(
+                msal_result["access_token"], msal_result["refresh_token"]
+            )
+            _TOKEN_CACHE[cache_key] = entry
+            return entry["access_token"]
 
-        cli_token = _try_azure_cli(ft, FABRIC_API_RESOURCE, az_cmd or AZ_CMD)
-        if cli_token:
-            _TOKEN_CACHE[cache_key] = cli_token
-            return cli_token
+        cli_result = _try_azure_cli(ft, FABRIC_API_RESOURCE, az_cmd or AZ_CMD)
+        if cli_result:
+            _TOKEN_CACHE[cache_key] = _make_entry(cli_result)
+            return cli_result
 
         raise RuntimeError(
             "No authentication method available for Fabric API.\n"

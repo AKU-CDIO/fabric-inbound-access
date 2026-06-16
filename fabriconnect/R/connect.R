@@ -75,28 +75,51 @@ connect_to_fabric <- function(
 
 #' @noRd
 .get_fabric_token <- function(tenant, access_token = NULL) {
-  # 1. Explicit token passed by user
   if (!is.null(access_token) && nchar(access_token) > 0) {
     return(access_token)
   }
-  # 2. Check package-level cache (so user only signs in once per session)
+
   cache_key <- paste0(tenant, ":https://storage.azure.com")
-  if (exists(cache_key, envir = .token_cache, inherits = FALSE)) {
-    return(.token_cache[[cache_key]])
+
+  entry <- if (exists(cache_key, envir = .token_cache, inherits = FALSE)) {
+    .token_cache[[cache_key]]
+  } else {
+    NULL
   }
-  # 3. Environment variable
+  if (!is.null(entry)) {
+    if (Sys.time() < entry$expires_at) {
+      return(entry$access_token)
+    }
+    if (!is.null(entry$refresh_token)) {
+      refreshed <- .refresh_token(tenant, entry$refresh_token,
+                                  "https://storage.azure.com")
+      if (!is.null(refreshed)) {
+        .token_cache[[cache_key]] <- refreshed
+        return(refreshed$access_token)
+      }
+    }
+  }
+
   env_token <- Sys.getenv("FABRIC_ACCESS_TOKEN")
   if (nchar(env_token) > 0) {
-    .token_cache[[cache_key]] <- env_token
+    .token_cache[[cache_key]] <- list(
+      access_token = env_token, refresh_token = NULL,
+      expires_at = Sys.time() + 3300
+    )
     return(env_token)
   }
-  # 4. Interactive device-code login (email + MFA — like ODBC)
-  msal_token <- .try_msal_device_code(tenant, "https://storage.azure.com")
-  if (!is.null(msal_token)) {
-    .token_cache[[cache_key]] <- msal_token
-    return(msal_token)
+
+  msal_result <- .try_msal_device_code(tenant, "https://storage.azure.com")
+  if (!is.null(msal_result)) {
+    entry <- list(
+      access_token = msal_result$access_token,
+      refresh_token = msal_result$refresh_token,
+      expires_at = Sys.time() + 3300
+    )
+    .token_cache[[cache_key]] <- entry
+    return(entry$access_token)
   }
-  # 5. Azure CLI (fallback for automation / CI)
+
   raw <- suppressWarnings(system(
     paste("az.cmd account get-access-token",
           "--resource https://storage.azure.com",
@@ -105,16 +128,44 @@ connect_to_fabric <- function(
     intern = TRUE, ignore.stderr = TRUE
   ))
   if (length(raw) > 0 && nchar(raw[1]) > 0 && grepl("^eyJ", raw[1])) {
-    .token_cache[[cache_key]] <- raw[1]
+    .token_cache[[cache_key]] <- list(
+      access_token = raw[1], refresh_token = NULL,
+      expires_at = Sys.time() + 3300
+    )
     return(raw[1])
   }
+
   stop(
     "No authentication method available.\n",
     "  Options:\n",
     "    1. Pass access_token = \"...\" to connect_to_fabric()\n",
     "    2. Set FABRIC_ACCESS_TOKEN environment variable\n",
-    "    3. Interactive device-code login (automatic — just follow the prompt)\n",
+    "    3. Interactive device-code login (automatic)\n",
     "    4. Run 'az login --tenant ", tenant, " --use-device-code'"
+  )
+}
+
+#' @noRd
+.refresh_token <- function(tenant, refresh_token, resource) {
+  client_id <- "1950a258-227b-4e31-a9cf-717495945fc2"
+  tok <- tryCatch(
+    httr::content(httr::POST(
+      sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenant),
+      body = list(
+        grant_type = "refresh_token",
+        client_id = client_id,
+        refresh_token = refresh_token,
+        scope = sprintf("%s/.default offline_access", resource)
+      ),
+      encode = "form"
+    )),
+    error = function(e) NULL
+  )
+  if (is.null(tok) || is.null(tok$access_token)) return(NULL)
+  list(
+    access_token  = tok$access_token,
+    refresh_token = if (is.null(tok$refresh_token)) refresh_token else tok$refresh_token,
+    expires_at    = Sys.time() + 3300
   )
 }
 
@@ -123,22 +174,17 @@ connect_to_fabric <- function(
   client_id <- "1950a258-227b-4e31-a9cf-717495945fc2"
   url_base <- sprintf("https://login.microsoftonline.com/%s", tenant)
 
-  # Step 1: Initiate device-code flow
   dev_resp <- httr::POST(
     sprintf("%s/oauth2/v2.0/devicecode", url_base),
     body = list(
       client_id = client_id,
-      scope = sprintf("%s/.default", resource)
+      scope = sprintf("%s/.default offline_access", resource)
     ),
     encode = "form"
   )
-  if (httr::status_code(dev_resp) != 200L) {
-    return(NULL)
-  }
+  if (httr::status_code(dev_resp) != 200L) return(NULL)
   dev <- httr::content(dev_resp)
-  if (is.null(dev$user_code)) {
-    return(NULL)
-  }
+  if (is.null(dev$user_code)) return(NULL)
 
   message(
     "\n====================  SIGN IN REQUIRED  ====================\n",
@@ -156,29 +202,32 @@ connect_to_fabric <- function(
 
   interval <- if (is.null(dev$interval)) 5L else dev$interval
 
-  # Step 2: Poll for token
   for (i in 1:120) {
     Sys.sleep(interval)
-    tok_resp <- httr::POST(
-      sprintf("%s/oauth2/v2.0/token", url_base),
-      body = list(
-        grant_type = "urn:ietf:params:oauth:grant-type:device_code",
-        client_id = client_id,
-        device_code = dev$device_code
-      ),
-      encode = "form"
+    tok <- tryCatch(
+      httr::content(httr::POST(
+        sprintf("%s/oauth2/v2.0/token", url_base),
+        body = list(
+          grant_type = "urn:ietf:params:oauth:grant-type:device_code",
+          client_id = client_id,
+          device_code = dev$device_code
+        ),
+        encode = "form"
+      )),
+      error = function(e) NULL
     )
-    tok <- httr::content(tok_resp)
+    if (is.null(tok)) next
 
     if (!is.null(tok$access_token)) {
       message("Authentication successful.\n")
-      return(tok$access_token)
+      return(list(
+        access_token  = tok$access_token,
+        refresh_token = tok$refresh_token
+      ))
     }
 
     err <- tok$error
-    if (is.null(err) || identical(err, "authorization_pending")) {
-      next
-    }
+    if (is.null(err) || identical(err, "authorization_pending")) next
     if (identical(err, "expired_token")) {
       message("Device code expired. Run connect_to_fabric() again to retry.")
       return(NULL)

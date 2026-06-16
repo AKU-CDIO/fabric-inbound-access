@@ -57,20 +57,48 @@ list_lakehouses <- function(
   if (!is.null(access_token) && nchar(access_token) > 0) {
     return(access_token)
   }
+
   cache_key <- paste0(tenant, ":https://api.fabric.microsoft.com")
-  if (exists(cache_key, envir = .token_cache, inherits = FALSE)) {
-    return(.token_cache[[cache_key]])
+
+  entry <- if (exists(cache_key, envir = .token_cache, inherits = FALSE)) {
+    .token_cache[[cache_key]]
+  } else {
+    NULL
   }
+  if (!is.null(entry)) {
+    if (Sys.time() < entry$expires_at) {
+      return(entry$access_token)
+    }
+    if (!is.null(entry$refresh_token)) {
+      refreshed <- .refresh_token(tenant, entry$refresh_token,
+                                  "https://api.fabric.microsoft.com")
+      if (!is.null(refreshed)) {
+        .token_cache[[cache_key]] <- refreshed
+        return(refreshed$access_token)
+      }
+    }
+  }
+
   env_token <- Sys.getenv("FABRIC_ACCESS_TOKEN")
   if (nchar(env_token) > 0) {
-    .token_cache[[cache_key]] <- env_token
+    .token_cache[[cache_key]] <- list(
+      access_token = env_token, refresh_token = NULL,
+      expires_at = Sys.time() + 3300
+    )
     return(env_token)
   }
-  msal_token <- .try_msal_device_code(tenant, "https://api.fabric.microsoft.com")
-  if (!is.null(msal_token)) {
-    .token_cache[[cache_key]] <- msal_token
-    return(msal_token)
+
+  msal_result <- .try_msal_device_code(tenant, "https://api.fabric.microsoft.com")
+  if (!is.null(msal_result)) {
+    entry <- list(
+      access_token = msal_result$access_token,
+      refresh_token = msal_result$refresh_token,
+      expires_at = Sys.time() + 3300
+    )
+    .token_cache[[cache_key]] <- entry
+    return(entry$access_token)
   }
+
   raw <- suppressWarnings(system(
     paste("az.cmd account get-access-token",
           "--resource https://api.fabric.microsoft.com",
@@ -79,7 +107,10 @@ list_lakehouses <- function(
     intern = TRUE, ignore.stderr = TRUE
   ))
   if (length(raw) > 0 && nchar(raw[1]) > 0 && grepl("^eyJ", raw[1])) {
-    .token_cache[[cache_key]] <- raw[1]
+    .token_cache[[cache_key]] <- list(
+      access_token = raw[1], refresh_token = NULL,
+      expires_at = Sys.time() + 3300
+    )
     return(raw[1])
   }
   stop(
