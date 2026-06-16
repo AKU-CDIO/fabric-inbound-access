@@ -2,6 +2,7 @@ import subprocess
 import json
 import urllib.request
 import os
+import webbrowser
 
 _CONFIG = None
 
@@ -51,7 +52,16 @@ def _try_msal_device_code(tenant, resource):
     flow = app.initiate_device_flow(scopes=[f"{resource}/.default"])
     if "user_code" not in flow:
         return None
-    print(f"Open {flow['verification_uri']} and enter code {flow['user_code']}", file=sys.stderr)
+    print("\n====================  SIGN IN REQUIRED  ====================", file=sys.stderr)
+    print("To access the Fabric Lakehouse, sign in with your email.", file=sys.stderr)
+    print("This supports MFA (e.g. Outlook / Microsoft Authenticator).\n", file=sys.stderr)
+    print(f"  Opening browser to: {flow['verification_uri']}", file=sys.stderr)
+    print(f"  Enter code: {flow['user_code']}", file=sys.stderr)
+    print("============================================================\n", file=sys.stderr)
+    try:
+        webbrowser.open(flow["verification_uri"])
+    except Exception:
+        pass
     result = {"token": None}
     def acquire():
         r = app.acquire_token_by_device_flow(flow)
@@ -60,6 +70,8 @@ def _try_msal_device_code(tenant, resource):
     t = threading.Thread(target=acquire, daemon=True)
     t.start()
     t.join(timeout=120)
+    if result["token"]:
+        print("Authentication successful.\n", file=sys.stderr)
     return result["token"]
 
 class FabricLakehouse:
@@ -111,17 +123,17 @@ class FabricLakehouse:
             _TOKEN_CACHE[cache_key] = env_token
             return env_token
 
-        # Strategy 3: Azure CLI (non-interactive, widely available)
-        cli_token = _try_azure_cli(self.fabric_tenant, resource, self.az_cmd)
-        if cli_token:
-            _TOKEN_CACHE[cache_key] = cli_token
-            return cli_token
-
-        # Strategy 4: MSAL device code (interactive pop-up — users sign in with email/password)
+        # Strategy 3: MSAL device code (interactive — sign in with email + MFA)
         msal_token = _try_msal_device_code(self.fabric_tenant, resource)
         if msal_token:
             _TOKEN_CACHE[cache_key] = msal_token
             return msal_token
+
+        # Strategy 4: Azure CLI (fallback for automation / CI)
+        cli_token = _try_azure_cli(self.fabric_tenant, resource, self.az_cmd)
+        if cli_token:
+            _TOKEN_CACHE[cache_key] = cli_token
+            return cli_token
 
         raise RuntimeError(
             "No authentication method available.\n"
@@ -314,15 +326,15 @@ class FabricLakehouse:
             _TOKEN_CACHE[cache_key] = env_token
             return env_token
 
-        cli_token = _try_azure_cli(ft, FABRIC_API_RESOURCE, az_cmd or AZ_CMD)
-        if cli_token:
-            _TOKEN_CACHE[cache_key] = cli_token
-            return cli_token
-
         msal_token = _try_msal_device_code(ft, FABRIC_API_RESOURCE)
         if msal_token:
             _TOKEN_CACHE[cache_key] = msal_token
             return msal_token
+
+        cli_token = _try_azure_cli(ft, FABRIC_API_RESOURCE, az_cmd or AZ_CMD)
+        if cli_token:
+            _TOKEN_CACHE[cache_key] = cli_token
+            return cli_token
 
         raise RuntimeError(
             "No authentication method available for Fabric API.\n"
