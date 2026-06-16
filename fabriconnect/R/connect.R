@@ -86,7 +86,7 @@ connect_to_fabric <- function(
   } else {
     NULL
   }
-  if (!is.null(entry)) {
+  if (is.list(entry)) {
     if (Sys.time() < entry$expires_at) {
       return(entry$access_token)
     }
