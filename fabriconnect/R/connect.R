@@ -82,29 +82,29 @@ connect_to_fabric <- function(
   if (nchar(env_token) > 0) {
     return(env_token)
   }
-  # 3. Azure CLI
-  token <- system(
+  # 3. Interactive device-code login (email + MFA — like ODBC)
+  msal_token <- .try_msal_device_code(tenant, "https://storage.azure.com")
+  if (!is.null(msal_token)) {
+    return(msal_token)
+  }
+  # 4. Azure CLI (fallback for automation / CI)
+  raw <- suppressWarnings(system(
     paste("az.cmd account get-access-token",
           "--resource https://storage.azure.com",
           "--tenant", tenant,
           "--query accessToken -o tsv"),
-    intern = TRUE
-  )
-  if (length(token) > 0 && nchar(token[1]) > 0) {
-    return(token[1])
-  }
-  # 4. Interactive device-code login (MFA-capable — sign in with email)
-  msal_token <- .try_msal_device_code(tenant, "https://storage.azure.com")
-  if (!is.null(msal_token)) {
-    return(msal_token)
+    intern = TRUE, ignore.stderr = TRUE
+  ))
+  if (length(raw) > 0 && nchar(raw[1]) > 0 && grepl("^eyJ", raw[1])) {
+    return(raw[1])
   }
   stop(
     "No authentication method available.\n",
     "  Options:\n",
     "    1. Pass access_token = \"...\" to connect_to_fabric()\n",
     "    2. Set FABRIC_ACCESS_TOKEN environment variable\n",
-    "    3. Run 'az login --tenant ", tenant, " --use-device-code'\n",
-    "    4. Interactive device-code login (automatic — just follow the prompt)"
+    "    3. Interactive device-code login (automatic — just follow the prompt)\n",
+    "    4. Run 'az login --tenant ", tenant, " --use-device-code'"
   )
 }
 

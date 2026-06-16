@@ -61,25 +61,26 @@ list_lakehouses <- function(
   if (nchar(env_token) > 0) {
     return(env_token)
   }
-  token <- system(
+  msal_token <- .try_msal_device_code(tenant, "https://api.fabric.microsoft.com")
+  if (!is.null(msal_token)) {
+    return(msal_token)
+  }
+  raw <- suppressWarnings(system(
     paste("az.cmd account get-access-token",
           "--resource https://api.fabric.microsoft.com",
           "--tenant", tenant,
           "--query accessToken -o tsv"),
-    intern = TRUE
-  )
-  if (length(token) > 0 && nchar(token[1]) > 0) {
-    return(token[1])
-  }
-  msal_token <- .try_msal_device_code(tenant, "https://api.fabric.microsoft.com")
-  if (!is.null(msal_token)) {
-    return(msal_token)
+    intern = TRUE, ignore.stderr = TRUE
+  ))
+  if (length(raw) > 0 && nchar(raw[1]) > 0 && grepl("^eyJ", raw[1])) {
+    return(raw[1])
   }
   stop(
     "No authentication method available for Fabric API.\n",
     "  Options:\n",
     "    1. Pass access_token = \"...\" to list_lakehouses()\n",
     "    2. Set FABRIC_ACCESS_TOKEN environment variable\n",
-    "    3. Run 'az login --tenant ", tenant, " --use-device-code'"
+    "    3. Interactive device-code login (automatic)\n",
+    "    4. Run 'az login --tenant ", tenant, " --use-device-code'"
   )
 }
