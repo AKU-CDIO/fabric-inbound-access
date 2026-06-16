@@ -57,12 +57,18 @@ list_lakehouses <- function(
   if (!is.null(access_token) && nchar(access_token) > 0) {
     return(access_token)
   }
+  cache_key <- paste0(tenant, ":https://api.fabric.microsoft.com")
+  if (exists(cache_key, envir = .token_cache, inherits = FALSE)) {
+    return(.token_cache[[cache_key]])
+  }
   env_token <- Sys.getenv("FABRIC_ACCESS_TOKEN")
   if (nchar(env_token) > 0) {
+    .token_cache[[cache_key]] <- env_token
     return(env_token)
   }
   msal_token <- .try_msal_device_code(tenant, "https://api.fabric.microsoft.com")
   if (!is.null(msal_token)) {
+    .token_cache[[cache_key]] <- msal_token
     return(msal_token)
   }
   raw <- suppressWarnings(system(
@@ -73,6 +79,7 @@ list_lakehouses <- function(
     intern = TRUE, ignore.stderr = TRUE
   ))
   if (length(raw) > 0 && nchar(raw[1]) > 0 && grepl("^eyJ", raw[1])) {
+    .token_cache[[cache_key]] <- raw[1]
     return(raw[1])
   }
   stop(

@@ -71,23 +71,32 @@ connect_to_fabric <- function(
   )
 }
 
+.token_cache <- new.env(parent = emptyenv())
+
 #' @noRd
 .get_fabric_token <- function(tenant, access_token = NULL) {
   # 1. Explicit token passed by user
   if (!is.null(access_token) && nchar(access_token) > 0) {
     return(access_token)
   }
-  # 2. Environment variable
+  # 2. Check package-level cache (so user only signs in once per session)
+  cache_key <- paste0(tenant, ":https://storage.azure.com")
+  if (exists(cache_key, envir = .token_cache, inherits = FALSE)) {
+    return(.token_cache[[cache_key]])
+  }
+  # 3. Environment variable
   env_token <- Sys.getenv("FABRIC_ACCESS_TOKEN")
   if (nchar(env_token) > 0) {
+    .token_cache[[cache_key]] <- env_token
     return(env_token)
   }
-  # 3. Interactive device-code login (email + MFA — like ODBC)
+  # 4. Interactive device-code login (email + MFA — like ODBC)
   msal_token <- .try_msal_device_code(tenant, "https://storage.azure.com")
   if (!is.null(msal_token)) {
+    .token_cache[[cache_key]] <- msal_token
     return(msal_token)
   }
-  # 4. Azure CLI (fallback for automation / CI)
+  # 5. Azure CLI (fallback for automation / CI)
   raw <- suppressWarnings(system(
     paste("az.cmd account get-access-token",
           "--resource https://storage.azure.com",
@@ -96,6 +105,7 @@ connect_to_fabric <- function(
     intern = TRUE, ignore.stderr = TRUE
   ))
   if (length(raw) > 0 && nchar(raw[1]) > 0 && grepl("^eyJ", raw[1])) {
+    .token_cache[[cache_key]] <- raw[1]
     return(raw[1])
   }
   stop(
