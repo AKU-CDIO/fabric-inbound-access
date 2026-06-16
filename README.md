@@ -5,6 +5,21 @@ bypassing the TDS/IP firewall port-1433 restriction. All traffic uses port 443.
 
 ---
 
+## Prerequisites
+
+- **Workspace access** — your Azure AD identity must have at least **Contributor**
+  role on the target Fabric workspace. **Viewer** role alone does **not** grant
+  OneLake data access (you will see a `403 Forbidden` error). If your team must
+  use Viewer, ask the workspace admin to enable
+  **OneLake data access → Viewers can read OneLake data** in workspace settings.
+- **Network** — the workspace IP firewall must allow your IP or be set to
+  **Allow all connections**.
+- **GitHub rate limit** — unauthenticated installs are limited to 60 requests/hour.
+  If installing on a shared VM, use the ZIP install command (see Troubleshooting)
+  or set a `GITHUB_PAT` environment variable.
+
+---
+
 ## Installation
 
 ### R
