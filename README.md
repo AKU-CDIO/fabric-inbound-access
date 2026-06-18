@@ -346,6 +346,53 @@ docs/                      # Supplementary documentation
 
 ---
 
+## Testing the delegated token flow from end to end
+
+**1. Generate a token** (via Azure CLI if you have access):
+
+```bash
+az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
+az account get-access-token --resource https://storage.azure.com --query accessToken -o tsv
+```
+
+Or via Python (MSAL device code, no Azure CLI needed):
+
+```python
+import msal
+app = msal.PublicClientApplication(
+    "1950a258-227b-4e31-a9cf-717495945fc2",
+    authority="https://login.microsoftonline.com/a5d4252a-02f9-4e60-96f0-9733baae4919"
+)
+flow = app.initiate_device_flow(["https://storage.azure.com/.default"])
+print(flow['message'])   # visit this URL and enter the code
+result = app.acquire_token_by_device_flow(flow)
+print(result['access_token'])
+```
+
+**2. Set the token as a delegated token:**
+
+```bash
+set FABRIC_DELEGATED_ACCESS_TOKEN="<token-from-step-1>"
+```
+
+**3. Connect and verify:**
+
+```python
+from fabricpy import FabricLakehouse
+lh = FabricLakehouse()
+print(lh.list_tables())
+```
+
+```r
+library(fabriconnect)
+conn <- connect_to_fabric()
+list_tables(conn)
+```
+
+If you see your tables listed, the delegated token flow is working.
+
+---
+
 ## License
 
 Apache 2.0
