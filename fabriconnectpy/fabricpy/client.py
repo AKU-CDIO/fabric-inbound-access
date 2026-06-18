@@ -36,6 +36,23 @@ def _make_entry(access_token, refresh_token=None):
         "expires_at": _now() + 3300,
     }
 
+def _normalize_access_token(token, *, required=False):
+    if token is None:
+        return None
+    token = str(token).strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    if not token:
+        return None
+    if not token.startswith("eyJ"):
+        if required:
+            raise ValueError(
+                "Access token must be a JWT. Paste only the token value "
+                "or 'Bearer <token>'."
+            )
+        return None
+    return token
+
 def _refresh_token(tenant, refresh_token, resource):
     data = urllib.parse.urlencode({
         "grant_type": "refresh_token",
@@ -61,8 +78,11 @@ def _refresh_token(tenant, refresh_token, resource):
     )
 
 def _try_env_var_token():
-    token = os.environ.get("FABRIC_ACCESS_TOKEN") or os.environ.get("AZURE_ACCESS_TOKEN")
-    return token.strip() if token else None
+    for name in ("FABRIC_ACCESS_TOKEN", "FABRIC_DELEGATED_ACCESS_TOKEN", "AZURE_ACCESS_TOKEN"):
+        token = _normalize_access_token(os.environ.get(name))
+        if token:
+            return token
+    return None
 
 def _try_azure_cli(tenant, resource, az_cmd):
     result = subprocess.run(
@@ -74,8 +94,7 @@ def _try_azure_cli(tenant, resource, az_cmd):
     )
     if result.returncode != 0:
         return None
-    token = result.stdout.strip()
-    return token if token else None
+    return _normalize_access_token(result.stdout)
 
 def _try_msal_device_code(tenant, resource):
     try:
@@ -124,7 +143,7 @@ class FabricLakehouse:
         self.workspace_guid = workspace_guid or cfg["workspace_guid"]
         self.fabric_tenant = fabric_tenant or cfg["fabric_tenant"]
         self.az_cmd = az_cmd or AZ_CMD
-        self._explicit_token = token
+        self._explicit_token = _normalize_access_token(token, required=True)
 
         # lakehouse is a shorthand alias for lakehouse_name
         if lakehouse_name is None and lakehouse is not None:
@@ -378,8 +397,9 @@ class FabricLakehouse:
                     return refreshed["access_token"]
 
         if token:
-            _TOKEN_CACHE[cache_key] = _make_entry(token)
-            return token
+            explicit_token = _normalize_access_token(token, required=True)
+            _TOKEN_CACHE[cache_key] = _make_entry(explicit_token)
+            return explicit_token
 
         env_token = _try_env_var_token()
         if env_token:

@@ -54,8 +54,9 @@ list_lakehouses <- function(
 
 #' @noRd
 .get_fabric_api_token <- function(tenant, access_token = NULL) {
-  if (!is.null(access_token) && nchar(access_token) > 0) {
-    return(access_token)
+  explicit_token <- .normalize_access_token(access_token, required = TRUE)
+  if (!is.null(explicit_token)) {
+    return(explicit_token)
   }
 
   cache_key <- paste0(tenant, ":https://api.fabric.microsoft.com")
@@ -79,8 +80,8 @@ list_lakehouses <- function(
     }
   }
 
-  env_token <- Sys.getenv("FABRIC_ACCESS_TOKEN")
-  if (nchar(env_token) > 0) {
+  env_token <- .get_env_access_token()
+  if (!is.null(env_token)) {
     .token_cache[[cache_key]] <- list(
       access_token = env_token, refresh_token = NULL,
       expires_at = Sys.time() + 3300

@@ -8,6 +8,6 @@ Description: Provides functions to connect to Microsoft Fabric Lakehouses
     Uses Azure CLI or interactive device-code sign-in (email/MFA) for authentication and arrow for parquet reading.
 Depends: R (>= 4.0)
 Imports: arrow, utils, DBI, httr, jsonlite
-Suggests: duckdb, dplyr, callr
+Suggests: duckdb, dplyr, callr, testthat
 License: MIT + file LICENSE
 Encoding: UTF-8

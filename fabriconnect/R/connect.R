@@ -5,9 +5,10 @@
 #' Supports multiple authentication methods (checked in order):
 #' \enumerate{
 #'   \item Explicit \code{access_token} parameter
-#'   \item \code{FABRIC_ACCESS_TOKEN} environment variable
+#'   \item \code{FABRIC_ACCESS_TOKEN}, \code{FABRIC_DELEGATED_ACCESS_TOKEN},
+#'     or \code{AZURE_ACCESS_TOKEN} environment variable
+#'   \item Interactive device-code login
 #'   \item Azure CLI (\code{az account get-access-token})
-#'   \item Interactive device-code login (sign in with your email — MFA supported)
 #' }
 #' Defaults are read from the bundled configuration file.
 #'
@@ -45,6 +46,7 @@ connect_to_fabric <- function(
   cfg <- .load_config()
   if (is.null(workspace_id))  workspace_id  <- cfg$workspace_guid
   if (is.null(fabric_tenant)) fabric_tenant <- cfg$fabric_tenant
+  access_token <- .normalize_access_token(access_token, required = TRUE)
 
   # lakehouse is a shorthand alias for lakehouse_name
   if (is.null(lakehouse_name) && !is.null(lakehouse)) {
@@ -74,9 +76,43 @@ connect_to_fabric <- function(
 .token_cache <- new.env(parent = emptyenv())
 
 #' @noRd
+.normalize_access_token <- function(access_token, required = FALSE) {
+  if (is.null(access_token) || length(access_token) == 0) {
+    return(NULL)
+  }
+
+  token <- trimws(access_token[[1]])
+  token <- sub("(?i)^Bearer\\s+", "", token, perl = TRUE)
+
+  if (is.na(token) || !nzchar(token)) {
+    return(NULL)
+  }
+  if (!grepl("^eyJ", token)) {
+    if (required) {
+      stop("Access token must be a JWT. Paste only the token value or 'Bearer <token>'.")
+    }
+    return(NULL)
+  }
+
+  token
+}
+
+#' @noRd
+.get_env_access_token <- function() {
+  for (name in c("FABRIC_ACCESS_TOKEN", "FABRIC_DELEGATED_ACCESS_TOKEN", "AZURE_ACCESS_TOKEN")) {
+    token <- .normalize_access_token(Sys.getenv(name, unset = ""), required = FALSE)
+    if (!is.null(token)) {
+      return(token)
+    }
+  }
+  NULL
+}
+
+#' @noRd
 .get_fabric_token <- function(tenant, access_token = NULL) {
-  if (!is.null(access_token) && nchar(access_token) > 0) {
-    return(access_token)
+  explicit_token <- .normalize_access_token(access_token, required = TRUE)
+  if (!is.null(explicit_token)) {
+    return(explicit_token)
   }
 
   cache_key <- paste0(tenant, ":https://storage.azure.com")
@@ -100,8 +136,8 @@ connect_to_fabric <- function(
     }
   }
 
-  env_token <- Sys.getenv("FABRIC_ACCESS_TOKEN")
-  if (nchar(env_token) > 0) {
+  env_token <- .get_env_access_token()
+  if (!is.null(env_token)) {
     .token_cache[[cache_key]] <- list(
       access_token = env_token, refresh_token = NULL,
       expires_at = Sys.time() + 3300

@@ -74,8 +74,8 @@ The packages try these methods in order, falling through automatically:
 
 | Priority | Method | Use case |
 |----------|--------|----------|
-| 1 | Explicit `access_token` parameter | Caller provides a token |
-| 2 | `FABRIC_ACCESS_TOKEN` env var | CI / headless / automation |
+| 1 | Explicit `access_token` / `token` parameter | Caller provides a token |
+| 2 | `FABRIC_ACCESS_TOKEN`, `FABRIC_DELEGATED_ACCESS_TOKEN`, or `AZURE_ACCESS_TOKEN` env var | CI / headless / delegated-token access |
 | 3 | Interactive device-code sign-in | Desktop — works like ODBC, MFA supported |
 | 4 | Azure CLI (`az login`) | Advanced / legacy automation |
 
@@ -99,6 +99,16 @@ lh = FabricLakehouse()
 ```bash
 export FABRIC_ACCESS_TOKEN="<your-token>"
 ```
+
+For delegated tokens issued to external or non-AKU-domain collaborators, use:
+
+```bash
+export FABRIC_DELEGATED_ACCESS_TOKEN="<delegated-token>"
+```
+
+The token may be provided as either the raw JWT or `Bearer <token>`. The signed-in
+identity must still be granted access to the Fabric workspace, usually as an
+external/guest user in the AKU tenant.
 
 ### Explicit token (in code)
 
