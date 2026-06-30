@@ -1,6 +1,7 @@
 import subprocess
 import json
 import urllib.request
+import urllib.error
 import os
 import webbrowser
 import time
@@ -22,12 +23,16 @@ STORAGE_RESOURCE = "https://storage.azure.com"
 FABRIC_API_RESOURCE = "https://api.fabric.microsoft.com"
 
 _TOKEN_CACHE = {}
+TOKEN_REFRESH_BUFFER_SECONDS = 300
 
 def _now():
     return time.time()
 
-def _is_expired(entry):
-    return _now() >= entry.get("expires_at", 0)
+def _is_usable(entry):
+    return _now() < entry.get("expires_at", 0)
+
+def _needs_refresh(entry):
+    return _now() >= entry.get("expires_at", 0) - TOKEN_REFRESH_BUFFER_SECONDS
 
 def _make_entry(access_token, refresh_token=None):
     return {
@@ -97,21 +102,27 @@ def _try_azure_cli(tenant, resource, az_cmd):
     return _normalize_access_token(result.stdout)
 
 def _try_msal_device_code(tenant, resource):
-    try:
-        import msal
-    except ImportError:
-        return None
     import sys
-    import threading
-    app = msal.PublicClientApplication(
-        "1950a258-227b-4e31-a9cf-717495945fc2",
-        authority=f"https://login.microsoftonline.com/{tenant}"
+
+    url_base = f"https://login.microsoftonline.com/{tenant}"
+    client_id = "1950a258-227b-4e31-a9cf-717495945fc2"
+    data = urllib.parse.urlencode({
+        "client_id": client_id,
+        "scope": f"{resource}/.default offline_access",
+    }).encode()
+    req = urllib.request.Request(
+        f"{url_base}/oauth2/v2.0/devicecode",
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    flow = app.initiate_device_flow(
-        scopes=[f"{resource}/.default"]
-    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            flow = json.loads(resp.read().decode())
+    except Exception:
+        return None
     if "user_code" not in flow:
         return None
+
     print("\n====================  SIGN IN REQUIRED  ====================", file=sys.stderr)
     print("To access the Fabric Lakehouse, sign in with your email.", file=sys.stderr)
     print("This supports MFA (e.g. Outlook / Microsoft Authenticator).\n", file=sys.stderr)
@@ -122,19 +133,56 @@ def _try_msal_device_code(tenant, resource):
         webbrowser.open(flow["verification_uri"])
     except Exception:
         pass
-    result = {"access_token": None, "refresh_token": None}
-    def acquire():
-        r = app.acquire_token_by_device_flow(flow)
-        if "access_token" in r:
-            result["access_token"] = r["access_token"]
-            result["refresh_token"] = r.get("refresh_token")
-    t = threading.Thread(target=acquire, daemon=True)
-    t.start()
-    t.join(timeout=120)
-    if result["access_token"]:
-        print("Authentication successful.\n", file=sys.stderr)
-    return result if result["access_token"] else None
 
+    interval = int(flow.get("interval", 5))
+    deadline = _now() + int(flow.get("expires_in", 900))
+    token_url = f"{url_base}/oauth2/v2.0/token"
+
+    while _now() < deadline:
+        time.sleep(interval)
+        token_data = urllib.parse.urlencode({
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            "client_id": client_id,
+            "device_code": flow["device_code"],
+        }).encode()
+        token_req = urllib.request.Request(
+            token_url,
+            data=token_data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        try:
+            with urllib.request.urlopen(token_req, timeout=30) as resp:
+                tok = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as exc:
+            try:
+                tok = json.loads(exc.read().decode())
+            except Exception:
+                return None
+            err = tok.get("error")
+            if err == "authorization_pending":
+                continue
+            if err == "slow_down":
+                interval += 5
+                continue
+            if err == "expired_token":
+                print("Device code expired. Run FabricLakehouse() again to retry.", file=sys.stderr)
+                return None
+            if err == "access_denied":
+                print("Authentication cancelled.", file=sys.stderr)
+                return None
+            return None
+        except Exception:
+            return None
+
+        if "access_token" in tok:
+            print("Authentication successful.\n", file=sys.stderr)
+            return {
+                "access_token": tok["access_token"],
+                "refresh_token": tok.get("refresh_token"),
+            }
+
+    print("Authentication timed out. Run FabricLakehouse() again to retry.", file=sys.stderr)
+    return None
 class FabricLakehouse:
     def __init__(self, workspace_guid=None, lakehouse_guid=None,
                  lakehouse=None, lakehouse_name=None,
@@ -173,7 +221,7 @@ class FabricLakehouse:
         entry = _TOKEN_CACHE.get(cache_key)
 
         if entry is not None:
-            if not _is_expired(entry):
+            if not _needs_refresh(entry):
                 return entry["access_token"]
             if entry.get("refresh_token"):
                 refreshed = _refresh_token(
@@ -182,6 +230,8 @@ class FabricLakehouse:
                 if refreshed is not None:
                     _TOKEN_CACHE[cache_key] = refreshed
                     return refreshed["access_token"]
+            if _is_usable(entry):
+                return entry["access_token"]
 
         if self._explicit_token:
             _TOKEN_CACHE[cache_key] = _make_entry(self._explicit_token)
@@ -387,7 +437,7 @@ class FabricLakehouse:
         entry = _TOKEN_CACHE.get(cache_key)
 
         if entry is not None:
-            if not _is_expired(entry):
+            if not _needs_refresh(entry):
                 return entry["access_token"]
             if entry.get("refresh_token"):
                 refreshed = _refresh_token(ft, entry["refresh_token"],
@@ -395,6 +445,8 @@ class FabricLakehouse:
                 if refreshed is not None:
                     _TOKEN_CACHE[cache_key] = refreshed
                     return refreshed["access_token"]
+            if _is_usable(entry):
+                return entry["access_token"]
 
         if token:
             explicit_token = _normalize_access_token(token, required=True)

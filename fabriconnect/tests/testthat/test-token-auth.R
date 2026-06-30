@@ -29,3 +29,14 @@ test_that("delegated token environment variable is accepted", {
 
   expect_identical(fabriconnect:::.get_env_access_token(), token)
 })
+
+test_that("cached tokens refresh before expiry", {
+  fresh <- list(access_token = "fresh", expires_at = Sys.time() + 600)
+  near_expiry <- list(access_token = "soon", expires_at = Sys.time() + 120)
+  expired <- list(access_token = "old", expires_at = Sys.time() - 1)
+
+  expect_false(fabriconnect:::.token_needs_refresh(fresh))
+  expect_true(fabriconnect:::.token_needs_refresh(near_expiry))
+  expect_true(fabriconnect:::.token_is_usable(near_expiry))
+  expect_false(fabriconnect:::.token_is_usable(expired))
+})

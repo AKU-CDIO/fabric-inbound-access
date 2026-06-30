@@ -67,7 +67,7 @@ list_lakehouses <- function(
     NULL
   }
   if (is.list(entry)) {
-    if (Sys.time() < entry$expires_at) {
+    if (!.token_needs_refresh(entry)) {
       return(entry$access_token)
     }
     if (!is.null(entry$refresh_token)) {
@@ -77,6 +77,9 @@ list_lakehouses <- function(
         .token_cache[[cache_key]] <- refreshed
         return(refreshed$access_token)
       }
+    }
+    if (.token_is_usable(entry)) {
+      return(entry$access_token)
     }
   }
 

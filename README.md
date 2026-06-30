@@ -1,159 +1,66 @@
-# fabriconnect / fabricpy
+# UZIMA Fabric Data Access
 
-R and Python packages for reading Microsoft Fabric Lakehouse data — from the **UZIMA study VM only**
+This package helps approved researchers read UZIMA study data from Microsoft Fabric while staying inside the approved research VM.
 
-> **Important:** Access to Fabric is restricted to the study VM only.
-> See [fabric-inbound-access](https://github.com/AKU-CDIO/fabric-inbound-access.git) for the firewall configuration that enforces this.
+The important idea is simple: **data access is VM-only**. We have enabled inbound access restrictions in Fabric, so the data can be read from the approved VM and not from personal laptops or other networks.
 
----
+## What Researchers Can Do
 
-## Before you start
+- Sign in from the approved VM.
+- See the lakehouses they have access to.
+- Read tables into R or Python for analysis.
+- Read only the columns they need when working with large tables.
+- Use the same sign-in session without repeatedly authenticating.
 
-- **Workspace access** — your Azure AD identity must have at least **Contributor**
-  role on the Fabric workspace. **Viewer** role alone will **not** work (you'll get a
-  `403 Forbidden` error). If your team must use Viewer, ask the workspace admin to
-  enable **OneLake data access → Viewers can read OneLake data** in workspace settings.
-- **Network** — you must be on the **UZIMA VM**. That's the only place the connection
-  will work.
-- **GitHub rate limit** — unauthenticated installs are limited to 60 requests/hour.
-  If installing on a shared VM, use the ZIP install command (see Troubleshooting)
-  or set a `GITHUB_PAT` environment variable.
+## Before You Start
 
----
+You need:
 
-## Authentication
+- Access to the approved research VM.
+- Approval to use the Fabric workspace or lakehouse.
+- R or Python installed on the VM.
+- The package installed on the VM.
 
-### Interactive sign-in (default — no extra setup needed)
+Your Azure AD identity must have access to the Fabric workspace. Contributor access works. Viewer access may need the workspace setting **OneLake data access -> Viewers can read OneLake data** enabled by an admin.
 
-Just call `connect_to_fabric()` or `FabricLakehouse()` with no arguments. A browser
-opens automatically — sign in with your email. MFA (Microsoft Authenticator, etc.)
-is fully supported. The token is cached for the session, so you won't be prompted
-again on subsequent calls.
+If you are outside the AKU domain, your account must be added as an approved external or guest user before access will work.
+
+## Install in R
 
 ```r
-conn <- connect_to_fabric()
+remotes::install_github(
+  "AKU-CDIO/fabric-inbound-access",
+  subdir = "fabriconnect",
+  force = TRUE,
+  upgrade_dependencies = FALSE
+)
 ```
 
-```python
-lh = FabricLakehouse()
-```
-
-### Other authentication methods
-
-If you can't use interactive sign-in (e.g., automated scripts), the package also
-supports these alternatives:
-
-**Environment variable** — for CI / headless / delegated-token access:
-
-```bash
-export FABRIC_ACCESS_TOKEN="<your-token>"
-```
-
-For delegated tokens issued to external or non-AKU-domain collaborators, use:
-
-```bash
-export FABRIC_DELEGATED_ACCESS_TOKEN="<delegated-token>"
-```
-
-The token can be either the raw JWT or `Bearer <token>`. The signed-in
-identity must still be granted access to the Fabric workspace (usually as an
-external/guest user in the AKU tenant).
-
-**Pass token directly in code:**
-
-```r
-conn <- connect_to_fabric(access_token = "<your-token>")
-```
-
-```python
-lh = FabricLakehouse(token = "<your-token>")
-```
-
-**Azure CLI** (advanced / legacy automation):
-
-```bash
-az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
-```
-
----
-
-## Installation
-
-### R
-
-```r
-remotes::install_github("AKU-CDIO/fabric-inbound-access",
-  subdir = "fabriconnect", force = TRUE, upgrade_dependencies = FALSE)
-```
-
-### Python
+## Install in Python
 
 ```bash
 pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
 ```
 
----
+## First Use
 
-## Quick start
-
-### Default Lakehouse (uzima_db_backup)
+Run this from the approved VM.
 
 ```r
 library(fabriconnect)
 conn <- connect_to_fabric()
 list_tables(conn)
-df <- read_table(conn, "dimenrolledparticipants")
 ```
 
 ```python
 from fabricpy import FabricLakehouse
 lh = FabricLakehouse()
 lh.list_tables()
-df = lh.to_pandas("dimenrolledparticipants")
 ```
 
-### Connect to a specific Lakehouse
+A browser sign-in may appear the first time. After the first successful sign-in, the package keeps the access token for the session and refreshes it before it expires. Researchers should not need to keep signing in for every table read.
 
-```r
-conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
-list_tables(conn)
-```
-
-```python
-lh = FabricLakehouse(lakehouse = "HCW_fitbit_data")
-```
-
----
-
-## Available Lakehouses
-
-Seven Lakehouses in the `cdiofabric` workspace:
-
-| Name | Contents |
-|------|----------|
-| `uzima_db_backup` *(default)* | 31 tables — enrolled participants, sleep logs, date dimension |
-| `HCW_fitbit_data` | 5 tables — activity logs, daily data, devices |
-| `Qualtrics` | Survey data |
-| `CDIOUZIMA_Azure_Storage_Accounts_Data` | Azure storage metadata |
-| `azu_cdiouzima` | Azure data |
-| `LS_Fabric_Lakehouse` | Linked services |
-| `StagingLakehouseForDataflows_20251110175852` | Dataflow staging |
-
-Discover programmatically:
-
-```r
-list_lakehouses()
-```
-
-```python
-FabricLakehouse.list_lakehouses()
-```
-
----
-
-## Common tasks
-
-### Read a table
+## Read a Table
 
 ```r
 df <- read_table(conn, "dimenrolledparticipants")
@@ -163,239 +70,105 @@ df <- read_table(conn, "dimenrolledparticipants")
 df = lh.to_pandas("dimenrolledparticipants")
 ```
 
-### Read only the columns you need (faster for large tables)
+## Read Only Selected Columns
+
+This is recommended for large tables.
 
 ```r
-df <- read_table(conn, "dimenrolledparticipants",
-  columns = c("ParticipantIdentifier", "Gender", "Age"))
-```
-
-```python
-df = lh.to_pandas("dimenrolledparticipants",
-  columns = ["ParticipantIdentifier", "Gender", "Age"])
-```
-
-### Run SQL queries
-
-Requires `duckdb` (`install.packages("duckdb")` or `pip install duckdb`).
-
-```r
-query_tables(conn, "SELECT count(*) FROM dimenrolledparticipants")
-```
-
-```python
-lh.sql("SELECT count(*) FROM dimenrolledparticipants")
-```
-
-### Multi-table SQL with column pruning
-
-```r
-result <- query_tables(conn, "
-  SELECT p.ParticipantIdentifier,
-         COUNT(*)              AS sleep_logs,
-         AVG(s.MinutesAsleep)  AS avg_min_asleep
-  FROM dimenrolledparticipants p
-  JOIN factfitbitsleeplogs s ON p.ParticipantIdentifier = s.ParticipantIdentifier
-  GROUP BY p.ParticipantIdentifier",
-  table_columns = list(
-    dimenrolledparticipants = c("ParticipantIdentifier"),
-    factfitbitsleeplogs     = c("ParticipantIdentifier", "MinutesAsleep")
-  ))
-```
-
-```python
-df = lh.sql("""
-  SELECT p.ParticipantIdentifier,
-         COUNT(*)              AS sleep_logs,
-         AVG(s.MinutesAsleep)  AS avg_min_asleep
-  FROM dimenrolledparticipants p
-  JOIN factfitbitsleeplogs s ON p.ParticipantIdentifier = s.ParticipantIdentifier
-  GROUP BY p.ParticipantIdentifier""",
-  table_columns = {
-    "dimenrolledparticipants": ["ParticipantIdentifier"],
-    "factfitbitsleeplogs":     ["ParticipantIdentifier", "MinutesAsleep"]
-  })
-```
-
-### Join tables across different Lakehouses
-
-```r
-conn1 <- connect_to_fabric(lakehouse = "uzima_db_backup")
-conn2 <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
-
-result <- query_tables(
-  list(uzima = conn1, hcw = conn2),
-  "SELECT p.ParticipantIdentifier, f.ActivityDate, f.Steps
-   FROM uzima.dimenrolledparticipants p
-   JOIN hcw.fitbitdailydata f
-     ON p.ParticipantIdentifier = f.ParticipantIdentifier
-   LIMIT 10")
-```
-
-```python
-lh1 = FabricLakehouse(lakehouse = "uzima_db_backup")
-lh2 = FabricLakehouse(lakehouse = "HCW_fitbit_data")
-
-result = FabricLakehouse.cross_query(
-  {"uzima": lh1, "hcw": lh2},
-  "SELECT p.ParticipantIdentifier, f.ActivityDate, f.Steps
-   FROM uzima.dimenrolledparticipants p
-   JOIN hcw.fitbitdailydata f
-     ON p.ParticipantIdentifier = f.ParticipantIdentifier
-   LIMIT 10")
-```
-
-### Demographics summary
-
-```r
-demo <- query_tables(conn, "
-  SELECT Gender, COUNT(*) AS total, AVG(Age) AS avg_age
-  FROM dimenrolledparticipants
-  WHERE Gender IS NOT NULL
-  GROUP BY Gender")
-```
-
-```python
-demo = lh.sql("""
-  SELECT Gender, COUNT(*) AS total, AVG(Age) AS avg_age
-  FROM dimenrolledparticipants
-  WHERE Gender IS NOT NULL
-  GROUP BY Gender""")
-```
-
----
-
-## Working with large tables
-
-If a table has hundreds of columns, only request the ones you need. The columns
-you leave out never get sent over the network, so your query runs faster.
-
----
-
-## Configuration
-
-The bundled `config.json` provides sensible defaults. Override any parameter:
-
-```r
-connect_to_fabric(
-  workspace_id  = "67f69cc9-00c9-4c9c-a85b-38fc30774b7b",
-  lakehouse     = "HCW_fitbit_data",
-  fabric_tenant = "a5d4252a-02f9-4e60-96f0-9733baae4919"
+df <- read_table(
+  conn,
+  "dimenrolledparticipants",
+  columns = c("ParticipantIdentifier", "Gender", "Age")
 )
 ```
 
 ```python
-FabricLakehouse(
-  workspace_guid = "67f69cc9-00c9-4c9c-a85b-38fc30774b7b",
-  lakehouse      = "HCW_fitbit_data",
-  fabric_tenant  = "a5d4252a-02f9-4e60-96f0-9733baae4919"
+df = lh.to_pandas(
+  "dimenrolledparticipants",
+  columns=["ParticipantIdentifier", "Gender", "Age"]
 )
 ```
 
----
+## Choose a Lakehouse
 
-## Updating
-
-### R
+The default lakehouse is `uzima_db_backup`.
 
 ```r
-library(fabriconnect)
-update_fabriconnect()
+conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
 ```
-
-Or restart R and re-run the install command.
-
-### Python
-
-```bash
-pip install --force-reinstall --no-cache-dir "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy"
-```
-
----
-
-## Troubleshooting
-
-| Problem | Likely cause | What to do |
-|---------|-------------|------------|
-| "SIGN IN REQUIRED" prompt loops on every call | Token not cached | Update to the latest version — tokens are now cached per session |
-| `401 Unauthorized` | Token expired | Re-run `connect_to_fabric()` — you'll be prompted to sign in again |
-| `Could not connect to server login.microsoftonline.com` | Network / firewall blocking Microsoft login | Make sure `login.microsoftonline.com` is reachable on port 443 |
-| `No parquet files found` | Table name is wrong | Check the name with `list_tables()`. Names are case-sensitive. |
-| `duckdb` not found | DuckDB not installed | `install.packages("duckdb")` (R) or `pip install duckdb` (Python) |
-| Package install says `...is in use` | R session has locked files | Restart R and re-run the install command |
-| `Failed to install 'unknown package' from GitHub: HTTP error 403` | GitHub rate limit (60 req/hr) | Set a GitHub PAT (`usethis::create_github_token()`, then `gitcreds::gitcreds_set()`), or install from ZIP: `install.packages("https://github.com/AKU-CDIO/fabric-inbound-access/archive/main.zip", repos = NULL, type = "source")` |
-| `msal` import error (Python) | Missing `msal` package | `pip install msal` |
-| Browser does not open automatically | No default browser or headless environment | Manually visit the URL printed in the console and enter the code shown |
-
----
-
-## Repository structure
-
-```
-fabriconnect/              # R package source
-  inst/config.json
-  R/
-fabriconnectpy/            # Python package source
-  fabricpy/config.json
-  fabricpy/client.py
-  fabricpy/__init__.py
-examples/                  # Runnable R examples
-install_fabriconnect.bat   # Double-click installer for Windows
-docs/                      # Supplementary documentation
-```
-
----
-
-## Testing the delegated token flow from end to end
-
-**1. Generate a token** (via Azure CLI if you have access):
-
-```bash
-az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
-az account get-access-token --resource https://storage.azure.com --query accessToken -o tsv
-```
-
-Or via Python (MSAL device code, no Azure CLI needed):
 
 ```python
-import msal
-app = msal.PublicClientApplication(
-    "1950a258-227b-4e31-a9cf-717495945fc2",
-    authority="https://login.microsoftonline.com/a5d4252a-02f9-4e60-96f0-9733baae4919"
-)
-flow = app.initiate_device_flow(["https://storage.azure.com/.default"])
-print(flow['message'])   # visit this URL and enter the code
-result = app.acquire_token_by_device_flow(flow)
-print(result['access_token'])
+lh = FabricLakehouse(lakehouse="HCW_fitbit_data")
 ```
 
-**2. Set the token as a delegated token:**
+Available lakehouses include:
 
-```bash
-set FABRIC_DELEGATED_ACCESS_TOKEN="<token-from-step-1>"
-```
+- `uzima_db_backup`
+- `HCW_fitbit_data`
+- `Qualtrics`
+- `CDIOUZIMA_Azure_Storage_Accounts_Data`
+- `azu_cdiouzima`
+- `LS_Fabric_Lakehouse`
+- `StagingLakehouseForDataflows_20251110175852`
 
-**3. Connect and verify:**
+## Optional: Run SQL Queries
 
-```python
-from fabricpy import FabricLakehouse
-lh = FabricLakehouse()
-print(lh.list_tables())
-```
+Researchers who prefer SQL can query tables directly after connecting.
 
 ```r
-library(fabriconnect)
-conn <- connect_to_fabric()
-list_tables(conn)
+query_tables(conn, "SELECT COUNT(*) FROM dimenrolledparticipants")
 ```
 
-If you see your tables listed, the delegated token flow is working.
+```python
+lh.sql("SELECT COUNT(*) FROM dimenrolledparticipants")
+```
 
----
+## Sign-In and Token Refresh
+
+For normal researcher use, call `connect_to_fabric()` or `FabricLakehouse()` and follow the browser sign-in prompt.
+
+For delegated-token access, the project administrator can do the first authentication on the VM. After that, the package refreshes the token before expiry when a refresh token is available.
+
+If a token must be supplied manually, use an environment variable rather than putting it in a script:
+
+```bash
+set FABRIC_DELEGATED_ACCESS_TOKEN=<delegated-token>
+```
+
+The token can be pasted as the raw token or as `Bearer <token>`.
+
+## Privacy and PII
+
+Sample files shared with researchers should not contain direct personal identifiers. Use the masked sample workbooks for sharing examples outside the secure access workflow.
+
+The real study data remains protected in Fabric and should be accessed only from the approved VM by approved users.
+
+## Common Issues
+
+### I cannot connect from my laptop
+
+That is expected. Fabric inbound access is restricted to the approved VM.
+
+### I see a sign-in prompt
+
+Sign in with the account that has been approved for the Fabric workspace. External users must be added before they can access the data.
+
+### I get a permission or forbidden message
+
+Ask the project administrator to confirm that your account has access to the correct workspace and lakehouse.
+
+### A table is very large
+
+Read only the columns you need. This reduces memory use and makes analysis faster.
+
+### GitHub install fails with a rate-limit message
+
+GitHub limits unauthenticated installs. Wait and try again, or ask the project administrator to install from the VM with a GitHub token.
+
+## Support
+
+Contact the UZIMA/CDIO data team if access fails from the approved VM or if your account needs to be added.
 
 ## License
 
 Apache 2.0
-
-**Author:** CDIO, AKU
-**Contact:** Derick Imbati — derick.imbati@aku.edu

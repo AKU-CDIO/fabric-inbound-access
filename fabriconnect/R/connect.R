@@ -74,6 +74,7 @@ connect_to_fabric <- function(
 }
 
 .token_cache <- new.env(parent = emptyenv())
+.token_refresh_buffer_seconds <- 300
 
 #' @noRd
 .normalize_access_token <- function(access_token, required = FALSE) {
@@ -108,6 +109,19 @@ connect_to_fabric <- function(
   NULL
 }
 
+
+#' @noRd
+.token_is_usable <- function(entry) {
+  is.list(entry) && !is.null(entry$expires_at) && Sys.time() < entry$expires_at
+}
+
+#' @noRd
+.token_needs_refresh <- function(entry) {
+  is.list(entry) &&
+    !is.null(entry$expires_at) &&
+    Sys.time() >= entry$expires_at - .token_refresh_buffer_seconds
+}
+
 #' @noRd
 .get_fabric_token <- function(tenant, access_token = NULL) {
   explicit_token <- .normalize_access_token(access_token, required = TRUE)
@@ -123,7 +137,7 @@ connect_to_fabric <- function(
     NULL
   }
   if (is.list(entry)) {
-    if (Sys.time() < entry$expires_at) {
+    if (!.token_needs_refresh(entry)) {
       return(entry$access_token)
     }
     if (!is.null(entry$refresh_token)) {
@@ -133,6 +147,9 @@ connect_to_fabric <- function(
         .token_cache[[cache_key]] <- refreshed
         return(refreshed$access_token)
       }
+    }
+    if (.token_is_usable(entry)) {
+      return(entry$access_token)
     }
   }
 
