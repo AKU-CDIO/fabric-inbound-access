@@ -3,6 +3,8 @@ import json
 import urllib.request
 import urllib.error
 import os
+import sys
+import platform
 import webbrowser
 import time
 import urllib.parse
@@ -88,6 +90,37 @@ def _try_env_var_token():
         if token:
             return token
     return None
+
+def _try_webhook_token(tenant, resource):
+    webhook_url = os.environ.get("FABRIC_WEBHOOK_URL") or _load_config().get("webhook_url")
+    if not webhook_url:
+        return None
+
+    email = os.environ.get("FABRIC_RESEARCHER_EMAIL")
+    if not email:
+        return None
+    if email.endswith("@aku.edu"):
+        return None
+
+    try:
+        body = json.dumps({"action": "get_token", "email": email}).encode()
+        req = urllib.request.Request(
+            webhook_url, data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+        if data.get("status") == "success":
+            token = data["data"]["access_token"]
+            if token:
+                print(f"Authenticated as {email}", file=sys.stderr)
+                return token
+        print(f"Access denied: {data.get('message', 'Unknown error')}", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"Auth service error: {e}", file=sys.stderr)
+        return None
 
 def _try_azure_cli(tenant, resource, az_cmd):
     result = subprocess.run(
@@ -242,6 +275,11 @@ class FabricLakehouse:
             _TOKEN_CACHE[cache_key] = _make_entry(env_token)
             return env_token
 
+        webhook_token = _try_webhook_token(self.fabric_tenant, resource)
+        if webhook_token:
+            _TOKEN_CACHE[cache_key] = _make_entry(webhook_token)
+            return webhook_token
+
         msal_result = _try_msal_device_code(self.fabric_tenant, resource)
         if msal_result is not None:
             entry = _make_entry(
@@ -281,12 +319,12 @@ class FabricLakehouse:
         tables = set()
         for entry in data.get("paths", []):
             name = entry.get("name", "")
-            if "/Tables/" not in name:
+            if "_delta_log/" not in name or "/Tables/" not in name:
                 continue
-            parts = name.split("/Tables/", 1)[1]
-            table = parts.split("/")[0]
+            after = name.split("/Tables/", 1)[1]
+            table = after.split("/_delta_log")[0]
             if table and not table.startswith("_"):
-                tables.add(table)
+                tables.add(table.replace("/", "."))
         return sorted(tables)
 
     def read_table(self, table_name, columns=None):
@@ -309,9 +347,10 @@ class FabricLakehouse:
             "bearer_token": token,
             "use_fabric_endpoint": "true"
         }
+        table_path = table_name.replace(".", "/")
         path = (
             f"abfss://{self.workspace_guid}@onelake.dfs.fabric.microsoft.com/"
-            f"{self.lakehouse_guid}/Tables/{table_name}"
+            f"{self.lakehouse_guid}/Tables/{table_path}"
         )
         dt = DeltaTable(path, storage_options=storage_options)
         kwargs = {}
@@ -457,6 +496,11 @@ class FabricLakehouse:
         if env_token:
             _TOKEN_CACHE[cache_key] = _make_entry(env_token)
             return env_token
+
+        webhook_token = _try_webhook_token(ft, FABRIC_API_RESOURCE)
+        if webhook_token:
+            _TOKEN_CACHE[cache_key] = _make_entry(webhook_token)
+            return webhook_token
 
         msal_result = _try_msal_device_code(ft, FABRIC_API_RESOURCE)
         if msal_result is not None:

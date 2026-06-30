@@ -32,8 +32,8 @@ list_tables <- function(conn) {
     return(character(0))
   }
   all_names <- vapply(data$paths, function(x) if (is.null(x$name)) "" else x$name, character(1))
-  all_names <- grep("/_delta_log/", all_names, value = TRUE, invert = TRUE)
-  tables <- unique(sub("/.*", "", sub(".*/Tables/", "", all_names)))
-  tables <- tables[nchar(tables) > 0 & !grepl("^_", tables)]
-  sort(tables)
+  delta_paths <- grep("/_delta_log/", all_names, value = TRUE)
+  raw <- unique(sub("/_delta_log/.*", "", sub(".*/Tables/", "", delta_paths)))
+  raw <- grep("^_", raw, value = TRUE, invert = TRUE)
+  tables <- sort(gsub("/", ".", raw))
 }

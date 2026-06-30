@@ -1,9 +1,10 @@
 read_table <- function(conn, table_name, columns = NULL, overwrite = TRUE) {
   token <- .get_fabric_token(conn$fabric_tenant, conn$access_token)
+  table_path <- gsub("\\.", "/", table_name)
 
   list_url <- sprintf(
     "https://onelake.dfs.fabric.microsoft.com/%s/%s/Tables/%s?recursive=true&maxResults=1000&resource=filesystem",
-    conn$workspace_id, conn$lakehouse_id, table_name
+    conn$workspace_id, conn$lakehouse_id, table_path
   )
   resp <- httr::GET(list_url, httr::add_headers(
     Authorization = paste("Bearer", token),

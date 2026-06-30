@@ -99,6 +99,38 @@ connect_to_fabric <- function(
 }
 
 #' @noRd
+.try_webhook_token <- function(tenant, resource) {
+  webhook_url <- Sys.getenv("FABRIC_WEBHOOK_URL", unset = "")
+  if (!nzchar(webhook_url)) return(NULL)
+
+  email <- Sys.getenv("FABRIC_RESEARCHER_EMAIL", unset = "")
+  if (!nzchar(email)) return(NULL)
+  if (grepl("@aku\\.edu$", email)) return(NULL)
+
+  body <- jsonlite::toJSON(list(action = "get_token", email = email), auto_unbox = TRUE)
+  tryCatch({
+    resp <- httr::POST(webhook_url, body = body, httr::content_type_json(), httr::timeout(30))
+    if (httr::status_code(resp) == 200L) {
+      data <- httr::content(resp)
+      if (identical(data$status, "success")) {
+        token <- data$data$access_token
+        if (!is.null(token)) {
+          message("Authenticated as ", email)
+          return(token)
+        }
+      }
+      msg <- data$message
+      if (is.null(msg)) msg <- "Access denied"
+      stop(msg)
+    }
+    NULL
+  }, error = function(e) {
+    message("Auth service error: ", e$message)
+    NULL
+  })
+}
+
+#' @noRd
 .get_env_access_token <- function() {
   for (name in c("FABRIC_ACCESS_TOKEN", "FABRIC_DELEGATED_ACCESS_TOKEN", "AZURE_ACCESS_TOKEN")) {
     token <- .normalize_access_token(Sys.getenv(name, unset = ""), required = FALSE)
@@ -160,6 +192,15 @@ connect_to_fabric <- function(
       expires_at = Sys.time() + 3300
     )
     return(env_token)
+  }
+
+  webhook_token <- .try_webhook_token(tenant, "https://storage.azure.com")
+  if (!is.null(webhook_token)) {
+    .token_cache[[cache_key]] <- list(
+      access_token = webhook_token, refresh_token = NULL,
+      expires_at = Sys.time() + 3300
+    )
+    return(webhook_token)
   }
 
   msal_result <- .try_msal_device_code(tenant, "https://storage.azure.com")

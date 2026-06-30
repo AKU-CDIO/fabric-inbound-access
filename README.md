@@ -2,28 +2,46 @@
 
 This package helps approved researchers read UZIMA study data from Microsoft Fabric while staying inside the approved research VM.
 
-The important idea is simple: **data access is VM-only**. We have enabled inbound access restrictions in Fabric, so the data can be read from the approved VM and not from personal laptops or other networks.
+**Data access is VM-only.** Fabric inbound access restrictions ensure data can only be read from the approved VM.
 
 ## What Researchers Can Do
 
-- Sign in from the approved VM.
-- See the lakehouses they have access to.
-- Read tables into R or Python for analysis.
-- Read only the columns they need when working with large tables.
-- Use the same sign-in session without repeatedly authenticating.
+- Sign in from the approved VM
+- See the lakehouses and tables they have access to
+- Read tables into R or Python for analysis
+- Read only the columns they need
+- SQL queries across tables and lakehouses
 
-## Before You Start
+## Authentication
 
-You need:
+The package supports two authentication paths, selected automatically:
 
-- Access to the approved research VM.
-- Approval to use the Fabric workspace or lakehouse.
-- R or Python installed on the VM.
-- The package installed on the VM.
+### AKU researchers (normal)
 
-Your Azure AD identity must have access to the Fabric workspace. Contributor access works. Viewer access may need the workspace setting **OneLake data access -> Viewers can read OneLake data** enabled by an admin.
+No setup needed. Call `connect_to_fabric()` — a browser opens for device-code sign-in with your @aku.edu account.
 
-If you are outside the AKU domain, your account must be added as an approved external or guest user before access will work.
+```r
+library(fabriconnect)
+conn <- connect_to_fabric()
+```
+
+### External researchers (delegated token)
+
+Approved external collaborators (e.g. University of Michigan) use an admin-provisioned token via an Azure Automation webhook.
+
+**One-time setup:**
+```bash
+setx FABRIC_RESEARCHER_EMAIL your.email@umich.edu
+```
+
+Then use R/Python as normal — the package calls the webhook automatically:
+
+```r
+library(fabriconnect)
+conn <- connect_to_fabric()
+```
+
+See [Runbooks/RESEARCHER-GUIDE.md](Runbooks/RESEARCHER-GUIDE.md) for full instructions.
 
 ## Install in R
 
@@ -58,8 +76,6 @@ lh = FabricLakehouse()
 lh.list_tables()
 ```
 
-A browser sign-in may appear the first time. After the first successful sign-in, the package keeps the access token for the session and refreshes it before it expires. Researchers should not need to keep signing in for every table read.
-
 ## Read a Table
 
 ```r
@@ -70,14 +86,25 @@ df <- read_table(conn, "dimenrolledparticipants")
 df = lh.to_pandas("dimenrolledparticipants")
 ```
 
+Tables in schemas use dot notation:
+
+```r
+list_tables(conn)                # "dbo.survey_responses_2026"
+df <- read_table(conn, "dbo.survey_responses_2026")
+```
+
+```python
+lh.list_tables()                 # "dbo.survey_responses_2026"
+df = lh.to_pandas("dbo.survey_responses_2026")
+```
+
 ## Read Only Selected Columns
 
-This is recommended for large tables.
+Recommended for large tables.
 
 ```r
 df <- read_table(
-  conn,
-  "dimenrolledparticipants",
+  conn, "dimenrolledparticipants",
   columns = c("ParticipantIdentifier", "Gender", "Age")
 )
 ```
@@ -91,17 +118,7 @@ df = lh.to_pandas(
 
 ## Choose a Lakehouse
 
-The default lakehouse is `uzima_db_backup`.
-
-```r
-conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
-```
-
-```python
-lh = FabricLakehouse(lakehouse="HCW_fitbit_data")
-```
-
-Available lakehouses include:
+Default is `uzima_db_backup`. Available lakehouses:
 
 - `uzima_db_backup`
 - `HCW_fitbit_data`
@@ -111,9 +128,15 @@ Available lakehouses include:
 - `LS_Fabric_Lakehouse`
 - `StagingLakehouseForDataflows_20251110175852`
 
-## Optional: Run SQL Queries
+```r
+conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
+```
 
-Researchers who prefer SQL can query tables directly after connecting.
+```python
+lh = FabricLakehouse(lakehouse="HCW_fitbit_data")
+```
+
+## SQL Queries
 
 ```r
 query_tables(conn, "SELECT COUNT(*) FROM dimenrolledparticipants")
@@ -123,47 +146,58 @@ query_tables(conn, "SELECT COUNT(*) FROM dimenrolledparticipants")
 lh.sql("SELECT COUNT(*) FROM dimenrolledparticipants")
 ```
 
-## Sign-In and Token Refresh
+Cross-lakehouse queries:
 
-For normal researcher use, call `connect_to_fabric()` or `FabricLakehouse()` and follow the browser sign-in prompt.
+```python
+uzima = FabricLakehouse(lakehouse="uzima_db_backup")
+hcw = FabricLakehouse(lakehouse="HCW_fitbit_data")
 
-For delegated-token access, the project administrator can do the first authentication on the VM. After that, the package refreshes the token before expiry when a refresh token is available.
-
-If a token must be supplied manually, use an environment variable rather than putting it in a script:
-
-```bash
-set FABRIC_DELEGATED_ACCESS_TOKEN=<delegated-token>
+FabricLakehouse.cross_query(
+  {"uzima": uzima, "hcw": hcw},
+  "SELECT p.ParticipantIdentifier, f.StepCount
+   FROM uzima.dimenrolledparticipants p
+   JOIN hcw.fitbitdailydata f ON p.ParticipantIdentifier = f.Id"
+)
 ```
 
-The token can be pasted as the raw token or as `Bearer <token>`.
+## Token Refresh
 
-## Privacy and PII
+The package caches access tokens and refreshes them before expiry. For delegated-token mode, an Azure Automation Runbook refreshes the admin's token every 50 minutes.
 
-Sample files shared with researchers should not contain direct personal identifiers. Use the masked sample workbooks for sharing examples outside the secure access workflow.
+## For Administrators
 
-The real study data remains protected in Fabric and should be accessed only from the approved VM by approved users.
+See [Runbooks/README.md](Runbooks/README.md) for deploying the token broker system:
+
+- Azure Automation webhook for email/IP validation
+- Key Vault for secure token storage
+- Scheduled refresh every 50 minutes
+- Whitelist management for external researchers
 
 ## Common Issues
 
 ### I cannot connect from my laptop
 
-That is expected. Fabric inbound access is restricted to the approved VM.
+Expected. Fabric inbound access is restricted to the approved VM.
+
+### list_tables returns table names like "dbo.survey_responses_2026"
+
+Some lakehouses organise tables under SQL schemas (like `dbo`). Use the full dotted name when reading: `read_table(conn, "dbo.survey_responses_2026")`.
 
 ### I see a sign-in prompt
 
-Sign in with the account that has been approved for the Fabric workspace. External users must be added before they can access the data.
+AKU researchers: sign in with your @aku.edu account. External researchers: set `FABRIC_RESEARCHER_EMAIL` first.
 
 ### I get a permission or forbidden message
 
-Ask the project administrator to confirm that your account has access to the correct workspace and lakehouse.
+Confirm your account (or webhook setup) has access to the correct workspace and lakehouse.
 
 ### A table is very large
 
-Read only the columns you need. This reduces memory use and makes analysis faster.
+Read only the columns you need. This reduces memory and speeds up analysis.
 
 ### GitHub install fails with a rate-limit message
 
-GitHub limits unauthenticated installs. Wait and try again, or ask the project administrator to install from the VM with a GitHub token.
+Wait and try again, or install with a GitHub personal access token.
 
 ## Support
 

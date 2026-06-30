@@ -1,0 +1,21 @@
+{
+  "description": "Approved external researchers who may request a delegated Fabric access token from the VM. Admin controls this list.",
+  "admin_email": "your-admin-email@aku.edu",
+  "vm_ips": ["4.245.225.10", "102.0.6.106"],
+  "approved_researchers": [
+    {
+      "name": "Ye Chan Kim",
+      "email": "yechank@med.umich.edu",
+      "institution": "University of Michigan",
+      "active": true,
+      "added": "2026-06-30"
+    },
+    {
+      "name": "Kenney Brooke",
+      "email": "nannab@med.umich.edu",
+      "institution": "University of Michigan",
+      "active": true,
+      "added": "2026-06-30"
+    }
+  ]
+}
