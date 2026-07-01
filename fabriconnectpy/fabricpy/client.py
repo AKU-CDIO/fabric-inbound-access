@@ -304,11 +304,11 @@ class FabricLakehouse:
             f"    4. Install msal (pip install msal) for interactive pop-up login"
         )
 
-    def _list_tables_for(self, lakehouse_guid, prefix=""):
+    def list_tables(self):
         token = self._get_token(resource=STORAGE_RESOURCE)
         url = (
             f"https://onelake.dfs.fabric.microsoft.com/{self.workspace_guid}/"
-            f"{lakehouse_guid}/Tables"
+            f"{self.lakehouse_guid}/Tables"
             f"?recursive=true&maxResults=1000&resource=filesystem"
         )
         req = urllib.request.Request(url, headers={
@@ -326,38 +326,8 @@ class FabricLakehouse:
             after = name.split("/Tables/", 1)[1]
             table = after.split("/_delta_log")[0]
             if table and not table.startswith("_"):
-                name_out = f"{prefix}.{table.replace('/', '.')}" if prefix else table.replace("/", ".")
-                tables.add(name_out)
-        return tables
-
-    def list_tables(self):
-        cfg = _load_config()
-        all_tables = self._list_tables_for(self.lakehouse_guid)
-        for sc_name, sc_id in cfg.get("shortcuts", {}).items():
-            all_tables |= self._list_tables_for(sc_id, prefix=sc_name)
-        return sorted(all_tables)
-
-    def _table_exists(self, lakehouse_guid, table_path):
-        token = self._get_token(resource=STORAGE_RESOURCE)
-        url = (
-            f"https://onelake.dfs.fabric.microsoft.com/{self.workspace_guid}/"
-            f"{lakehouse_guid}/Tables/{table_path}"
-            f"?recursive=true&maxResults=1&resource=filesystem"
-        )
-        req = urllib.request.Request(url, headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json;charset=utf-8",
-            "x-ms-version": "2024-08-04"
-        }, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read().decode())
-            for entry in data.get("paths", []):
-                if entry.get("name", "").endswith(".parquet"):
-                    return True
-            return False
-        except Exception:
-            return False
+                tables.add(table.replace("/", "."))
+        return sorted(tables)
 
     def read_table(self, table_name, columns=None):
         """Read a Delta table as a pyarrow Table.
@@ -365,11 +335,7 @@ class FabricLakehouse:
         Parameters
         ----------
         table_name : str
-            Table name. Supports:
-            - ``"tablename"`` — auto-search across all lakehouses
-            - ``"shortcut.tablename"`` — shortcut with dbo schema
-            - ``"shortcut.schema.tablename"`` — fully qualified
-            - ``"schema.tablename"`` — connected lakehouse with schema
+            Table name (e.g. ``"dbo.aku_survey_responses_2026"``).
         columns : list of str, optional
             Column names to select (predicate pushdown). Reduces
             network transfer for large tables.
@@ -379,54 +345,15 @@ class FabricLakehouse:
         pyarrow.Table
         """
         from deltalake import DeltaTable
-        cfg = _load_config()
-        parts = table_name.split(".")
-        shortcuts = cfg.get("shortcuts", {})
-
-        if len(parts) >= 3:
-            target_id = shortcuts.get(parts[0])
-            if target_id is None:
-                raise ValueError(f"Unknown shortcut '{parts[0]}'")
-            lakehouse_guid = target_id
-            table_path = f"{parts[1]}/{parts[2]}"
-        elif len(parts) == 2 and parts[0] in shortcuts:
-            lakehouse_guid = shortcuts[parts[0]]
-            table_path = f"dbo/{parts[1]}"
-        elif len(parts) == 2:
-            lakehouse_guid = self.lakehouse_guid
-            table_path = f"{parts[0]}/{parts[1]}"
-        else:
-            candidates = [("", self.lakehouse_guid)]
-            candidates.extend(shortcuts.items())
-            found_guid = None
-            found_path = None
-            for sc_name, lid in candidates:
-                for schema in ("dbo", ""):
-                    tp = f"{schema}/{table_name}" if schema else table_name
-                    if self._table_exists(lid, tp):
-                        found_guid = lid
-                        found_path = tp
-                        if sc_name:
-                            print(f"Found '{sc_name}.{table_name}'", file=sys.stderr)
-                        break
-                if found_guid:
-                    break
-            if found_guid is None:
-                raise FileNotFoundError(
-                    f"Table '{table_name}' not found in the connected lakehouse "
-                    "or any shortcut. Use list_tables() to discover available tables."
-                )
-            lakehouse_guid = found_guid
-            table_path = found_path
-
         token = self._get_token(resource=STORAGE_RESOURCE)
         storage_options = {
             "bearer_token": token,
             "use_fabric_endpoint": "true"
         }
+        table_path = table_name.replace(".", "/")
         path = (
             f"abfss://{self.workspace_guid}@onelake.dfs.fabric.microsoft.com/"
-            f"{lakehouse_guid}/Tables/{table_path}"
+            f"{self.lakehouse_guid}/Tables/{table_path}"
         )
         dt = DeltaTable(path, storage_options=storage_options)
         kwargs = {}
