@@ -54,15 +54,18 @@ connect_to_fabric <- function(
   }
 
   if (!is.null(lakehouse_name)) {
-    lakes <- list_lakehouses(workspace_id = workspace_id,
-                             fabric_tenant = fabric_tenant,
-                             access_token = access_token)
-    idx <- which(lakes$name == lakehouse_name)
-    if (length(idx) == 0) {
-      stop("Lakehouse '", lakehouse_name, "' not found in workspace. ",
-           "Use list_lakehouses() to see available names.")
+    lakehouse_id <- cfg$shortcuts[[lakehouse_name]]
+    if (is.null(lakehouse_id)) {
+      lakes <- list_lakehouses(workspace_id = workspace_id,
+                               fabric_tenant = fabric_tenant,
+                               access_token = access_token)
+      idx <- which(lakes$name == lakehouse_name)
+      if (length(idx) == 0) {
+        stop("Lakehouse '", lakehouse_name, "' not found in workspace. ",
+             "Use list_lakehouses() to see available names.")
+      }
+      lakehouse_id <- lakes$id[idx[1]]
     }
-    lakehouse_id <- lakes$id[idx[1]]
   }
   if (is.null(lakehouse_id)) lakehouse_id <- cfg$lakehouse_guid
 

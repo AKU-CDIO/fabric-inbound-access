@@ -3,5 +3,10 @@
   "workspace_name": "cdiofabric",
   "lakehouse_guid": "67596566-8ea9-4fd6-a451-ca9654aa4f10",
   "lakehouse_name": "uzima_db_backup",
-  "fabric_tenant": "a5d4252a-02f9-4e60-96f0-9733baae4919"
+  "fabric_tenant": "a5d4252a-02f9-4e60-96f0-9733baae4919",
+  "shortcuts": {
+    "Qualtrics": "8bb92d0b-3f94-4bd1-94d4-b31b088e9061",
+    "LS_Fabric_Lakehouse": "1ad04079-7636-4ce6-ac32-d99aede44c14",
+    "HCW_fitbit_data": "65058b40-a60c-4267-a882-9263e0ba0617"
+  }
 }
