@@ -321,10 +321,14 @@ class FabricLakehouse:
         tables = set()
         for entry in data.get("paths", []):
             name = entry.get("name", "")
-            if "_delta_log/" not in name or "/Tables/" not in name:
+            if "/Tables/" not in name:
                 continue
             after = name.split("/Tables/", 1)[1]
-            table = after.split("/_delta_log")[0]
+            parts = after.rstrip("/").split("/")
+            if len(parts) < 2:
+                continue
+            # Extract the directory prefix (e.g. "dbo/table_name")
+            table = "/".join(parts[:-1]) if len(parts) > 1 else parts[0]
             if table and not table.startswith("_"):
                 tables.add(table.replace("/", "."))
         return sorted(tables)
