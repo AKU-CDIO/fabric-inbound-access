@@ -22,6 +22,7 @@ update_fabriconnect()
 
 ## Connect
 
+### AKU researchers
 ```r
 library(fabriconnect)
 
@@ -30,6 +31,27 @@ conn <- connect_to_fabric()
 
 # Or connect by name
 conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")
+```
+
+### External researchers (delegated token)
+Approved external collaborators (e.g. University of Michigan) use an admin-provisioned token via an Azure Automation webhook.
+
+**One-time setup — set your email:**
+```bash
+setx FABRIC_RESEARCHER_EMAIL your.email@umich.edu
+```
+
+Then connect as normal:
+```r
+library(fabriconnect)
+conn <- connect_to_fabric()   # Authenticated as your.email@umich.edu
+list_tables(conn)
+read_table(conn, "dimenrolledparticipants")
+```
+
+The `FABRIC_WEBHOOK_URL` is pre-configured in the package. If you need to set it manually:
+```bash
+setx FABRIC_WEBHOOK_URL https://a28ba9ca-fccc-4d71-8568-1d6340b357d7.webhook.ne.azure-automation.net/webhooks?token=UIVQO89cW8jEi0CMiTp2XFVC4kArToEMjI8HZBPsSlk%3d
 ```
 
 ## List tables

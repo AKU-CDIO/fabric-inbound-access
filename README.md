@@ -34,7 +34,14 @@ Approved external collaborators (e.g. University of Michigan) use an admin-provi
 setx FABRIC_RESEARCHER_EMAIL your.email@umich.edu
 ```
 
-Then use Python as normal — the package contacts the auth service in the background:
+Then use R or Python as normal — the package contacts the auth service in the background:
+
+```r
+library(fabriconnect)
+conn <- connect_to_fabric()
+list_tables(conn)                              # Authenticated as your.email@umich.edu
+df <- read_table(conn, "dimenrolledparticipants")
+```
 
 ```python
 from fabricpy import FabricLakehouse

@@ -103,29 +103,100 @@ connect_to_fabric <- function(
 
 #' @noRd
 .try_webhook_token <- function(tenant, resource) {
+  cfg <- .load_config()
+
   webhook_url <- Sys.getenv("FABRIC_WEBHOOK_URL", unset = "")
-  if (!nzchar(webhook_url)) return(NULL)
+  if (!nzchar(webhook_url)) {
+    webhook_url <- cfg$automation$webhook_url
+    if (is.null(webhook_url) || !nzchar(webhook_url)) return(NULL)
+  }
 
   email <- Sys.getenv("FABRIC_RESEARCHER_EMAIL", unset = "")
   if (!nzchar(email)) return(NULL)
   if (grepl("@aku\\.edu$", email)) return(NULL)
 
-  body <- jsonlite::toJSON(list(action = "get_token", email = email), auto_unbox = TRUE)
+  sub <- cfg$automation$subscription_id
+  rg  <- cfg$automation$resource_group
+  aa  <- cfg$automation$account_name
+  if (is.null(sub) || is.null(rg) || is.null(aa) ||
+      !nzchar(sub) || !nzchar(rg) || !nzchar(aa)) {
+    message("Auth service error: missing automation config for job polling.")
+    return(NULL)
+  }
+
   tryCatch({
-    resp <- httr::POST(webhook_url, body = body, httr::content_type_json(), httr::timeout(30))
-    if (httr::status_code(resp) == 200L) {
-      data <- httr::content(resp)
-      if (identical(data$status, "success")) {
-        token <- data$data$access_token
-        if (!is.null(token)) {
-          message("Authenticated as ", email)
-          return(token)
-        }
-      }
-      msg <- data$message
-      if (is.null(msg)) msg <- "Access denied"
-      stop(msg)
+    resp <- httr::POST(
+      webhook_url,
+      body = list(action = "get_token", email = email),
+      encode = "json",
+      httr::timeout(30)
+    )
+    if (httr::status_code(resp) != 200L) return(NULL)
+
+    job_data <- httr::content(resp)
+    job_ids <- job_data$JobIds
+    if (is.null(job_ids) || length(job_ids) == 0) {
+      message("Auth service error: no JobIds in webhook response.")
+      return(NULL)
     }
+    job_id <- job_ids[[1]]
+
+    deadline <- Sys.time() + 120
+    while (Sys.time() < deadline) {
+      Sys.sleep(10)
+      uri <- sprintf(
+        "https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Automation/automationAccounts/%s/jobs/%s?api-version=2023-11-01",
+        sub, rg, aa, job_id
+      )
+      raw <- suppressWarnings(system(
+        paste("az.cmd rest --method GET --uri", shQuote(uri, type = "cmd"),
+              "--query \"properties.status\" -o tsv"),
+        intern = TRUE, ignore.stderr = TRUE
+      ))
+      status <- if (length(raw) > 0) trimws(raw[[1]]) else ""
+      if (identical(status, "Completed")) break
+      if (status %in% c("Failed", "Stopped", "Suspended")) {
+        message("Auth service error: job ", status, ".")
+        return(NULL)
+      }
+    }
+
+    out_uri <- sprintf(
+      "https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Automation/automationAccounts/%s/jobs/%s/output?api-version=2023-11-01",
+      sub, rg, aa, job_id
+    )
+    raw <- suppressWarnings(system(
+      paste("az.cmd rest --method GET --uri", shQuote(out_uri, type = "cmd"), "-o json 2>nul"),
+      intern = TRUE, ignore.stderr = TRUE
+    ))
+    output_text <- paste(raw, collapse = "\n")
+
+    marker_start <- "---BEGIN-RESPONSE---"
+    marker_end   <- "---END-RESPONSE---"
+    start_idx <- regexpr(marker_start, output_text, fixed = TRUE)
+    if (start_idx == -1) {
+      message("Auth service error: unexpected response format (no BEGIN marker).")
+      return(NULL)
+    }
+    start_idx <- start_idx + nchar(marker_start)
+    end_idx <- regexpr(marker_end, output_text, fixed = TRUE)
+    if (end_idx == -1) {
+      message("Auth service error: unexpected response format (no END marker).")
+      return(NULL)
+    }
+    json_str <- substr(output_text, start_idx, end_idx - 1)
+
+    data <- jsonlite::fromJSON(trimws(json_str), simplifyVector = FALSE)
+    if (identical(data$status, "success")) {
+      token <- data$data$access_token
+      if (!is.null(token)) {
+        message("Authenticated as ", email)
+        return(token)
+      }
+    }
+    msg <- data$message
+    if (is.null(msg)) msg <- "Access denied"
+    message("Access denied: ", msg)
     NULL
   }, error = function(e) {
     message("Auth service error: ", e$message)
