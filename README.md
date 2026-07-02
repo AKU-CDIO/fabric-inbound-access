@@ -27,21 +27,35 @@ conn <- connect_to_fabric()
 
 ### External researchers (delegated token)
 
-Approved external collaborators (e.g. University of Michigan) use an admin-provisioned token via an Azure Automation webhook.
+Approved external collaborators (e.g. University of Michigan) use an admin-provisioned token via an Azure Automation webhook. **No browser sign-in, no codes to copy** — the package calls the auth service automatically.
 
-**One-time setup:**
+**One-time setup — set your email:**
 ```bash
 setx FABRIC_RESEARCHER_EMAIL your.email@umich.edu
 ```
 
-Then use R/Python as normal — the package calls the webhook automatically:
+Then use Python as normal — the package contacts the auth service in the background:
 
-```r
-library(fabriconnect)
-conn <- connect_to_fabric()
+```python
+from fabricpy import FabricLakehouse
+lh = FabricLakehouse()
+lh.list_tables()          # Authenticated as your.email@umich.edu
+df = lh.to_pandas("dimenrolledparticipants")
 ```
 
-See [Runbooks/RESEARCHER-GUIDE.md](Runbooks/RESEARCHER-GUIDE.md) for full instructions.
+**How it works:**
+1. The package calls the Azure Automation webhook with your email
+2. The runbook validates your email against the approved whitelist in Key Vault
+3. Returns a short-lived Fabric access token
+4. The package caches the token and refreshes it before expiry
+
+See [Runbooks/RESEARCHER-GUIDE.md](Runbooks/RESEARCHER-GUIDE.md) for full instructions or [docs/PROCESS_FLOW.md](docs/PROCESS_FLOW.md) for the architecture diagram.
+
+The `FABRIC_WEBHOOK_URL` is pre-configured on the VM. If you need to set it manually:
+
+```bash
+setx FABRIC_WEBHOOK_URL https://a28ba9ca-fccc-4d71-8568-1d6340b357d7.webhook.ne.azure-automation.net/webhooks?token=UIVQO89cW8jEi0CMiTp2XFVC4kArToEMjI8HZBPsSlk%3d
+```
 
 ## Install in R
 
