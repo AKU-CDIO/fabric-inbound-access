@@ -112,8 +112,11 @@ def _ps_decrypt(filepath):
             ["powershell", "-NoProfile", "-Command", script],
             capture_output=True, text=True, timeout=15
         )
+        if r.returncode != 0 and r.stderr:
+            print(f"[fabricpy] PS decrypt failed: {r.stderr.strip()}", file=sys.stderr)
         return r.stdout.strip() if r.returncode == 0 else None
-    except Exception:
+    except Exception as e:
+        print(f"[fabricpy] PS decrypt error: {e}", file=sys.stderr)
         return None
 
 
@@ -150,19 +153,24 @@ def _try_local_token():
     """Read the locally cached encrypted access token."""
     path = os.path.join(_TOKEN_DIR, "access-token.enc")
     if not os.path.isfile(path):
+        print(f"[fabricpy] No local token file at {path}", file=sys.stderr)
         return None
     plain = _ps_decrypt(path)
     if not plain:
+        print(f"[fabricpy] Local token decryption returned empty", file=sys.stderr)
         return None
     try:
         data = json.loads(plain)
-    except Exception:
+    except Exception as e:
+        print(f"[fabricpy] Local token JSON parse error: {e}", file=sys.stderr)
         return None
     access_token = _normalize_access_token(data.get("access_token"))
     if not access_token:
+        print(f"[fabricpy] No access_token in decrypted data", file=sys.stderr)
         return None
     expiry = data.get("expiry", 0)
     if time.time() >= int(expiry) - 120:
+        print(f"[fabricpy] Local token expired (expiry={expiry})", file=sys.stderr)
         return None
     return access_token
 
