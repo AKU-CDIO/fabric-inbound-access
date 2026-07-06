@@ -107,7 +107,7 @@ def generate():
     ])
 
     _lakehouse(doc, "Qualtrics (shortcut)", "8bb92d0b-3f94-4bd1-94d4-b31b088e9061", [
-        ("dbo.aku_survey_responses_2026", "Qualtrics survey responses"),
+        ("dbo.aku_survey_responses_2026", "Qualtrics survey responses (256 columns)"),
     ])
 
     doc.add_paragraph(
