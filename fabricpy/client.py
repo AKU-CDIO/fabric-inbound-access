@@ -8,6 +8,7 @@ import platform
 import webbrowser
 import time
 import urllib.parse
+import tempfile
 
 _CONFIG = None
 
@@ -26,6 +27,8 @@ FABRIC_API_RESOURCE = "https://api.fabric.microsoft.com"
 
 _TOKEN_CACHE = {}
 TOKEN_REFRESH_BUFFER_SECONDS = 300
+_TOKEN_DIR = os.path.join(os.environ.get("PROGRAMDATA", ""), "UZIMA", "FabricTokenBroker")
+_VM_HOST = "uzima"
 
 def _now():
     return time.time()
@@ -91,6 +94,116 @@ def _try_env_var_token():
             return token
     return None
 
+def _ps_decrypt(filepath):
+    """Decrypt a PowerShell AES-encrypted file using the machine-bound key."""
+    script = (
+        f'$c = Get-Content "{filepath}" -Raw -ErrorAction Stop; '
+        f'$s = (Get-WmiObject Win32_OperatingSystem).SerialNumber; '
+        f'$k = "{_VM_HOST}-$s"; '
+        f'$sha = [Security.Cryptography.SHA256]::Create(); '
+        f'$kb = [Convert]::ToBase64String($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($k))); '
+        f'$sec = ConvertTo-SecureString -String $c -Key ([Text.Encoding]::UTF8.GetBytes($kb.Substring(0,32))); '
+        f'$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec); '
+        f'try {{ [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }} '
+        f'finally {{ [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }}'
+    )
+    try:
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", script],
+            capture_output=True, text=True, timeout=15
+        )
+        return r.stdout.strip() if r.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def _ps_encrypt(filepath, value):
+    """Encrypt a string using PowerShell AES and write to file."""
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, dir=None)
+    try:
+        tmp.write(value)
+        tmp.close()
+        script = (
+            f'$v = Get-Content "{tmp.name}" -Raw; '
+            f'$s = (Get-WmiObject Win32_OperatingSystem).SerialNumber; '
+            f'$k = "{_VM_HOST}-$s"; '
+            f'$sha = [Security.Cryptography.SHA256]::Create(); '
+            f'$kb = [Convert]::ToBase64String($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($k))); '
+            f'$sec = ConvertTo-SecureString -String $v -AsPlainText -Force; '
+            f'$enc = ConvertFrom-SecureString -SecureString $sec -Key ([Text.Encoding]::UTF8.GetBytes($kb.Substring(0,32))); '
+            f'$enc | Set-Content "{filepath}" -Force'
+        )
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command", script],
+            capture_output=True, text=True, timeout=15
+        )
+    except Exception:
+        pass
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except Exception:
+            pass
+
+
+def _try_local_token():
+    """Read the locally cached encrypted access token."""
+    path = os.path.join(_TOKEN_DIR, "access-token.enc")
+    if not os.path.isfile(path):
+        return None
+    plain = _ps_decrypt(path)
+    if not plain:
+        return None
+    try:
+        data = json.loads(plain)
+    except Exception:
+        return None
+    access_token = _normalize_access_token(data.get("access_token"))
+    if not access_token:
+        return None
+    expiry = data.get("expiry", 0)
+    if time.time() >= int(expiry) - 120:
+        return None
+    return access_token
+
+
+def _try_local_refresh_token(tenant, resource):
+    """Use the locally stored encrypted refresh token to get a new access token."""
+    path = os.path.join(_TOKEN_DIR, "refresh-token.enc")
+    if not os.path.isfile(path):
+        return None
+    refresh_token = _ps_decrypt(path)
+    if not refresh_token:
+        return None
+    try:
+        data = urllib.parse.urlencode({
+            "grant_type": "refresh_token",
+            "client_id": "1950a258-227b-4e31-a9cf-717495945fc2",
+            "refresh_token": refresh_token,
+            "scope": f"{resource}/.default offline_access",
+        }).encode()
+        req = urllib.request.Request(
+            f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            tok = json.loads(resp.read().decode())
+    except Exception:
+        return None
+    if "access_token" not in tok:
+        return None
+    new_access = tok["access_token"]
+    new_refresh = tok.get("refresh_token", refresh_token)
+    expiry = int(time.time()) + tok.get("expires_in", 3300)
+
+    # Update local cache files
+    token_data = json.dumps({"access_token": new_access, "expiry": expiry})
+    _ps_encrypt(os.path.join(_TOKEN_DIR, "access-token.enc"), token_data)
+    _ps_encrypt(os.path.join(_TOKEN_DIR, "refresh-token.enc"), new_refresh)
+    return new_access
+
+
 def _try_webhook_token(tenant, resource):
     webhook_url = os.environ.get("FABRIC_WEBHOOK_URL") or _load_config().get("automation", {}).get("webhook_url")
     if not webhook_url:
@@ -125,24 +238,33 @@ def _try_webhook_token(tenant, resource):
             return None
         job_id = job_ids[0]
 
+        # Poll job status via Azure CLI (requires management API scope)
         import time
-        deadline = time.time() + 120
+        deadline = time.time() + 30
+        completed = False
         while time.time() < deadline:
-            time.sleep(10)
+            time.sleep(5)
             result = subprocess.run(
                 f'az rest --method GET --uri "https://management.azure.com/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Automation/automationAccounts/{aa}/jobs/{job_id}?api-version=2023-11-01" --query "properties.status" -o tsv',
-                capture_output=True, text=True, timeout=15, shell=True
+                capture_output=True, text=True, timeout=10, shell=True
             )
             status = result.stdout.strip() if result.returncode == 0 else ""
             if status == "Completed":
+                completed = True
                 break
             if status in ("Failed", "Stopped", "Suspended"):
                 print(f"Auth service error: job {status}.", file=sys.stderr)
                 return None
+            if not status and result.returncode != 0:
+                # az rest not available or needs MFA - fail fast
+                break
+
+        if not completed:
+            return None
 
         out_result = subprocess.run(
             f'az rest --method GET --uri "https://management.azure.com/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Automation/automationAccounts/{aa}/jobs/{job_id}/output?api-version=2023-11-01" -o json 2>nul',
-            capture_output=True, text=True, timeout=15, shell=True
+            capture_output=True, text=True, timeout=10, shell=True
         )
         output_text = out_result.stdout or ""
         marker_start = "---BEGIN-RESPONSE---"
@@ -325,19 +447,25 @@ class FabricLakehouse:
             _TOKEN_CACHE[cache_key] = _make_entry(env_token)
             return env_token
 
+        # Local encrypted token (no MFA, no Azure CLI needed)
+        local_token = _try_local_token()
+        if local_token:
+            _TOKEN_CACHE[cache_key] = _make_entry(local_token)
+            return local_token
+
+        # Local refresh token -> new access token (no MFA, no Azure CLI needed)
+        local_refreshed = _try_local_refresh_token(self.fabric_tenant, resource)
+        if local_refreshed:
+            _TOKEN_CACHE[cache_key] = _make_entry(local_refreshed)
+            return local_refreshed
+
+        # Webhook fallback (requires Azure CLI with management scope)
         webhook_token = _try_webhook_token(self.fabric_tenant, resource)
         if webhook_token:
             _TOKEN_CACHE[cache_key] = _make_entry(webhook_token)
             return webhook_token
 
-        msal_result = _try_msal_device_code(self.fabric_tenant, resource)
-        if msal_result is not None:
-            entry = _make_entry(
-                msal_result["access_token"], msal_result["refresh_token"]
-            )
-            _TOKEN_CACHE[cache_key] = entry
-            return entry["access_token"]
-
+        # Azure CLI fallback (requires interactive login)
         cli_result = _try_azure_cli(self.fabric_tenant, resource, self.az_cmd)
         if cli_result:
             _TOKEN_CACHE[cache_key] = _make_entry(cli_result)
@@ -346,10 +474,10 @@ class FabricLakehouse:
         raise RuntimeError(
             "No authentication method available.\n"
             "  Options:\n"
-            f"    1. Pass token= to FabricLakehouse()\n"
-            f"    2. Set FABRIC_ACCESS_TOKEN env var\n"
-            f"    3. Run 'az login --tenant {self.fabric_tenant} --use-device-code'\n"
-            f"    4. Install msal (pip install msal) for interactive pop-up login"
+            f"    1. Pass token= to FabricLakehouse() (from admin)\n"
+            "    2. Set FABRIC_ACCESS_TOKEN env var\n"
+            "    3. Run admin setup: deploy-token-broker.ps1 -Mode LocalVM\n"
+            "    4. Contact your administrator for a delegated access token"
         )
 
     def list_tables(self):
@@ -547,18 +675,20 @@ class FabricLakehouse:
             _TOKEN_CACHE[cache_key] = _make_entry(env_token)
             return env_token
 
+        local_token = _try_local_token()
+        if local_token:
+            _TOKEN_CACHE[cache_key] = _make_entry(local_token)
+            return local_token
+
+        local_refreshed = _try_local_refresh_token(ft, FABRIC_API_RESOURCE)
+        if local_refreshed:
+            _TOKEN_CACHE[cache_key] = _make_entry(local_refreshed)
+            return local_refreshed
+
         webhook_token = _try_webhook_token(ft, FABRIC_API_RESOURCE)
         if webhook_token:
             _TOKEN_CACHE[cache_key] = _make_entry(webhook_token)
             return webhook_token
-
-        msal_result = _try_msal_device_code(ft, FABRIC_API_RESOURCE)
-        if msal_result is not None:
-            entry = _make_entry(
-                msal_result["access_token"], msal_result["refresh_token"]
-            )
-            _TOKEN_CACHE[cache_key] = entry
-            return entry["access_token"]
 
         cli_result = _try_azure_cli(ft, FABRIC_API_RESOURCE, az_cmd or AZ_CMD)
         if cli_result:

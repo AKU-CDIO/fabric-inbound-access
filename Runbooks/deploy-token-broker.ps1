@@ -1,8 +1,8 @@
-<#
+﻿<#
 .SYNOPSIS
     Deploy the Fabric Token Broker — initial setup script
 .DESCRIPTION
-    Run this on the approved VM (admindsvm) to:
+    Run this on the approved VM (uzima) to:
       1. Authenticate via device code (admin) to get a refresh token
       2. Deploy the refresh token to Azure Key Vault or store locally
       3. Set up a Windows Scheduled Task to refresh the token every 50 min
@@ -33,7 +33,7 @@ param(
 $TENANT_ID        = "a5d4252a-02f9-4e60-96f0-9733baae4919"
 $STORAGE_RESOURCE = "https://storage.azure.com"
 $CLIENT_ID        = "1950a258-227b-4e31-a9cf-717495945fc2"
-$ALLOWED_VM_HOST  = "admindsvm"
+$ALLOWED_VM_HOST  = "uzima"
 $TOKEN_DIR        = "$env:PROGRAMDATA\UZIMA\FabricTokenBroker"
 
 function Assert-AdminVm {
@@ -77,7 +77,7 @@ function Unprotect-String {
 
 function Do-DeviceCodeAuth {
     Write-Host "`n============================================" -ForegroundColor Cyan
-    Write-Host "  UZIMA Fabric Token Broker — Admin Auth" -ForegroundColor Cyan
+    Write-Host "  UZIMA Fabric Token Broker -- Admin Auth" -ForegroundColor Cyan
     Write-Host "============================================" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "You'll authenticate with your Azure AD account (device code flow)." -ForegroundColor White
@@ -93,12 +93,10 @@ function Do-DeviceCodeAuth {
     $deviceCodeUrl = "https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/devicecode"
     $deviceCodeResp = Invoke-RestMethod -Method Post -Uri $deviceCodeUrl -Body $deviceCodeBody -ContentType "application/x-www-form-urlencoded"
 
-    Write-Host "┌─────────────────────────────────────────────────────────┐" -ForegroundColor Yellow
-    Write-Host "│  OPEN YOUR BROWSER AND NAVIGATE TO:" -ForegroundColor Yellow
-    Write-Host "│  $($deviceCodeResp.verification_uri)" -ForegroundColor White
-    Write-Host "│" -ForegroundColor Yellow
-    Write-Host "│  ENTER THE CODE: $($deviceCodeResp.user_code)" -ForegroundColor Cyan
-    Write-Host "└─────────────────────────────────────────────────────────┘" -ForegroundColor Yellow
+    Write-Host "OPEN YOUR BROWSER AND NAVIGATE TO:" -ForegroundColor Yellow
+    Write-Host "  $($deviceCodeResp.verification_uri)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "ENTER THE CODE: $($deviceCodeResp.user_code)" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Waiting for authentication..." -ForegroundColor Gray
 
@@ -114,38 +112,48 @@ function Do-DeviceCodeAuth {
                 client_id   = $CLIENT_ID
                 device_code = $deviceCodeResp.device_code
             }
-            $tokenResp = Invoke-RestMethod -Method Post -Uri $tokenUrl -Body $tokenBody -ContentType "application/x-www-form-urlencoded"
-
-            Write-Host "`nAuthentication successful!" -ForegroundColor Green
-            return @{
-                access_token  = $tokenResp.access_token
-                refresh_token = $tokenResp.refresh_token
+            $webRequest = Invoke-WebRequest -Method Post -Uri $tokenUrl -Body $tokenBody -ContentType "application/x-www-form-urlencoded" -UseBasicParsing
+            if ($webRequest.StatusCode -eq 200) {
+                $tokenResp = $webRequest.Content | ConvertFrom-Json
+                Write-Host "`nAuthentication successful!" -ForegroundColor Green
+                return @{
+                    access_token  = $tokenResp.access_token
+                    refresh_token = $tokenResp.refresh_token
+                }
             }
         } catch {
-            $errBody = $_.Exception.Response
-            if ($errBody) {
-                $reader = New-Object System.IO.StreamReader($errBody.GetResponseStream())
-                $errText = $reader.ReadToEnd() | ConvertFrom-Json
-                if ($errText.error -eq "authorization_pending") { continue }
-                if ($errText.error -eq "slow_down") { $interval += 5; continue }
-                if ($errText.error -eq "expired_token") {
-                    Write-Error "Device code expired. Run this script again."
-                    return $null
-                }
-                if ($errText.error -eq "access_denied") {
-                    Write-Error "Authentication cancelled."
-                    return $null
+            $errBodyText = $_.Exception.Response
+            if ($errBodyText) {
+                try {
+                    $reader = New-Object System.IO.StreamReader($errBodyText.GetResponseStream())
+                    $errJson = $reader.ReadToEnd() | ConvertFrom-Json
+                    $reader.Close()
+                } catch {
+                    $errJson = $null
                 }
             }
-            Write-Error "Auth error: $_"
-            return $null
+            if (-not $errJson) {
+                try { $errJson = $_.ErrorDetails.Message | ConvertFrom-Json } catch { $errJson = $null }
+            }
+            if ($errJson.error -eq "authorization_pending") { continue }
+            if ($errJson.error -eq "slow_down") { $interval += 5; continue }
+            if ($errJson.error -eq "expired_token") {
+                Write-Error "Device code expired. Run this script again."
+                return $null
+            }
+            if ($errJson.error -eq "access_denied") {
+                Write-Error "Authentication cancelled."
+                return $null
+            }
+            Write-Host "Waiting... ($($errJson.error))" -ForegroundColor Gray
+            continue
         }
     }
     Write-Error "Authentication timed out."
     return $null
 }
 
-# ─── Azure Automation Mode ───────────────────────────────────────────────
+# ---- Azure Automation Mode -----------------------------------------------
 function Deploy-AzureAutomation {
     param($Tokens)
 
@@ -163,7 +171,6 @@ function Deploy-AzureAutomation {
 
     Write-Host "`nStoring refresh token in Key Vault '$KeyVaultName'..." -ForegroundColor Cyan
 
-    # Check if Key Vault exists
     $kvCheck = az keyvault show --name $KeyVaultName 2>$null
     if (-not $kvCheck) {
         Write-Host "Key Vault '$KeyVaultName' not found. Creating..." -ForegroundColor Yellow
@@ -172,13 +179,11 @@ function Deploy-AzureAutomation {
         Write-Host "Key Vault created." -ForegroundColor Green
     }
 
-    # Store secrets
     $expiry = [int][double]::Parse((Get-Date -UFormat %s)) + 3300
     az keyvault secret set --vault-name $KeyVaultName --name "fabric-refresh-token" --value $Tokens.refresh_token | Out-Null
     az keyvault secret set --vault-name $KeyVaultName --name "fabric-access-token" --value $Tokens.access_token | Out-Null
     az keyvault secret set --vault-name $KeyVaultName --name "fabric-token-expiry" --value $expiry | Out-Null
 
-    # Store initial whitelist
     $whitelist = @(
         "your-admin-email@aku.edu",
         "yechank@med.umich.edu",
@@ -186,7 +191,7 @@ function Deploy-AzureAutomation {
     ) | ConvertTo-Json -Compress
     az keyvault secret set --vault-name $KeyVaultName --name "researcher-whitelist" --value $whitelist | Out-Null
 
-    Write-Host "`n✓ Secrets stored in Key Vault '$KeyVaultName'" -ForegroundColor Green
+    Write-Host "`nSecrets stored in Key Vault '$KeyVaultName'" -ForegroundColor Green
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Cyan
     Write-Host "  1. Import the runbooks into Azure Automation:" -ForegroundColor White
@@ -198,13 +203,12 @@ function Deploy-AzureAutomation {
     Write-Host "  4. Set FABRIC_WEBHOOK_URL env var on the VM for vm-token-client.ps1" -ForegroundColor Gray
 }
 
-# ─── Local VM Mode ────────────────────────────────────────────────────────
+# ---- Local VM Mode --------------------------------------------------------
 function Deploy-LocalVM {
     param($Tokens)
 
     Write-Host "`nStoring tokens locally on VM (machine-bound encryption)..." -ForegroundColor Cyan
 
-    # Create directory with admin-only ACL
     if (-not (Test-Path $TOKEN_DIR)) {
         New-Item -ItemType Directory -Path $TOKEN_DIR -Force | Out-Null
     }
@@ -285,14 +289,12 @@ try {
 "@
     $refreshScript | Set-Content $refreshScriptPath -Force
 
-    # Create scheduled task
+    # Create scheduled task (schtasks for PS5.1 compatibility)
     $taskName = "UZIMA-FabricTokenRefresh"
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -File `"$refreshScriptPath`""
-    $trigger = New-ScheduledTaskTrigger -Daily -At "00:00" -RepetitionInterval (New-TimeSpan -Minutes 50) -RepetitionDuration (New-TimeSpan -Days 365)
-    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force
+    $taskCmd = "powershell.exe -NoProfile -WindowStyle Hidden -File `"$refreshScriptPath`""
+    & schtasks /create /tn $taskName /tr "$taskCmd" /sc daily /mo 1 /st 00:00 /ri 50 /du 9999:00 /f /ru SYSTEM 2>&1 | Out-Null
 
-    Write-Host "`n✓ Local token broker deployed!" -ForegroundColor Green
+    Write-Host "`nLocal token broker deployed!" -ForegroundColor Green
     Write-Host "  Token directory: $TOKEN_DIR" -ForegroundColor Gray
     Write-Host "  Scheduled task:  $taskName (every 50 min)" -ForegroundColor Gray
     Write-Host "  Whitelist:       $TOKEN_DIR\whitelist.json" -ForegroundColor Gray
@@ -301,16 +303,15 @@ try {
     Write-Host "  .\vm-token-client-local.ps1  (from this VM)" -ForegroundColor White
 }
 
-# ─── Main ────────────────────────────────────────────────────────────────────
+# ---- Main --------------------------------------------------------------------
 Clear-Host
-Write-Host "╔═══════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║     UZIMA Fabric Token Broker — Deployment        ║" -ForegroundColor Cyan
-Write-Host "╚═══════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "==============================================" -ForegroundColor Cyan
+Write-Host "  UZIMA Fabric Token Broker -- Deployment" -ForegroundColor Cyan
+Write-Host "==============================================" -ForegroundColor Cyan
 Write-Host ""
 
 Assert-AdminVm
 
-# Check if running as admin
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
     Write-Warning "Not running as Administrator. Some features (Scheduled Task) may fail."
@@ -318,7 +319,6 @@ if (-not $isAdmin) {
     if ($cont -ne "y") { exit }
 }
 
-# Authenticate
 $tokens = $null
 if (-not $SkipAuth) {
     $tokens = Do-DeviceCodeAuth
@@ -327,7 +327,6 @@ if (-not $SkipAuth) {
     Write-Host "Skipping auth (use -SkipAuth only if tokens already stored)." -ForegroundColor Yellow
 }
 
-# Deploy
 switch ($Mode) {
     "AzureAutomation" {
         if ($tokens) { Deploy-AzureAutomation -Tokens $tokens }
