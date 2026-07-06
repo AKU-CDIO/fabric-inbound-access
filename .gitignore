@@ -27,4 +27,8 @@ Thumbs.db
 *.swp
 *.swo
 *~
+~$*
+
+# Temporary / locked files
+UZIMA_Fabric_Access_Instructions.docx
 examples/baseline.csv
