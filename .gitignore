@@ -31,4 +31,5 @@ Thumbs.db
 
 # Temporary / locked files
 UZIMA_Fabric_Access_Instructions.docx
+test_azure_cli_auth.py
 examples/baseline.csv
