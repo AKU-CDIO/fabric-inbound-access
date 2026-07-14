@@ -205,38 +205,86 @@ connect_to_fabric <- function(
 }
 
 #' @noRd
+.decode_jwt_claims <- function(token) {
+  parts <- strsplit(token, ".", fixed = TRUE)[[1]]
+  if (length(parts) < 2) return(NULL)
+
+  payload <- chartr("-_", "+/", parts[[2]])
+  padding <- (4 - nchar(payload) %% 4) %% 4
+  if (padding) payload <- paste0(payload, strrep("=", padding))
+
+  tryCatch(
+    jsonlite::fromJSON(rawToChar(jsonlite::base64_dec(payload)), simplifyVector = FALSE),
+    error = function(e) NULL
+  )
+}
+
+#' @noRd
+.token_expires_at <- function(token) {
+  claims <- .decode_jwt_claims(token)
+  if (is.null(claims) || is.null(claims$exp)) return(NULL)
+  as.POSIXct(as.numeric(claims$exp), origin = "1970-01-01", tz = "UTC")
+}
+
+#' @noRd
+.token_has_time_left <- function(token, buffer_seconds = .token_refresh_buffer_seconds) {
+  expires_at <- .token_expires_at(token)
+  is.null(expires_at) || Sys.time() < expires_at - buffer_seconds
+}
+
+#' @noRd
 .get_env_access_token <- function() {
   for (name in c("FABRIC_ACCESS_TOKEN", "FABRIC_DELEGATED_ACCESS_TOKEN", "AZURE_ACCESS_TOKEN")) {
     token <- .normalize_access_token(Sys.getenv(name, unset = ""), required = FALSE)
-    if (!is.null(token)) {
+    if (!is.null(token) && .token_has_time_left(token)) {
       return(token)
     }
   }
   NULL
 }
 
+#' @noRd
+.read_local_access_token_entry <- function(path) {
+  if (!file.exists(path)) return(NULL)
+  raw <- tryCatch(readLines(path, warn = FALSE, n = 1), error = function(e) character(0))
+  if (length(raw) == 0) return(NULL)
 
+  token <- .normalize_access_token(raw[[1]], required = FALSE)
+  if (is.null(token) || !.token_has_time_left(token)) return(NULL)
+
+  info <- tryCatch(file.info(path), error = function(e) NULL)
+  modified_at <- if (is.null(info)) as.POSIXct(NA) else info$mtime[[1]]
+  list(token = token, expires_at = .token_expires_at(token), modified_at = modified_at, path = path)
+}
 
 #' @noRd
 .get_local_access_token_file <- function() {
   candidates <- unique(c(
     Sys.getenv("FABRIC_ACCESS_TOKEN_FILE", unset = ""),
+    file.path(Sys.getenv("PROGRAMDATA", unset = "C:/ProgramData"), "UZIMA", "FabricTokenBroker", "fab_token.txt"),
     file.path(Sys.getenv("USERPROFILE", unset = ""), "fab_token.txt"),
-    file.path(Sys.getenv("HOME", unset = ""), "fab_token.txt"),
-    file.path(Sys.getenv("PROGRAMDATA", unset = "C:/ProgramData"), "UZIMA", "FabricTokenBroker", "fab_token.txt")
+    file.path(Sys.getenv("HOME", unset = ""), "fab_token.txt")
   ))
   candidates <- candidates[nzchar(candidates)]
 
-  for (path in candidates) {
-    if (!file.exists(path)) next
-    raw <- tryCatch(readLines(path, warn = FALSE, n = 1), error = function(e) character(0))
-    if (length(raw) == 0) next
-    token <- .normalize_access_token(raw[[1]], required = FALSE)
-    if (!is.null(token)) {
-      return(token)
-    }
-  }
-  NULL
+  entries <- lapply(candidates, .read_local_access_token_entry)
+  entries <- entries[!vapply(entries, is.null, logical(1))]
+  if (length(entries) == 0) return(NULL)
+
+  expiry <- vapply(entries, function(entry) {
+    if (is.null(entry$expires_at)) Inf else as.numeric(entry$expires_at)
+  }, numeric(1))
+  modified <- vapply(entries, function(entry) {
+    if (is.na(entry$modified_at)) 0 else as.numeric(entry$modified_at)
+  }, numeric(1))
+
+  entries[[order(expiry, modified, decreasing = TRUE)[[1]]]]$token
+}
+
+#' @noRd
+.get_local_access_token_expiry <- function(token) {
+  expires_at <- .token_expires_at(token)
+  if (is.null(expires_at)) Sys.time() + 3300 else expires_at
 }
 #' @noRd
 .token_is_usable <- function(entry) {
@@ -263,7 +311,7 @@ connect_to_fabric <- function(
   if (!is.null(local_file_token)) {
     .token_cache[[cache_key]] <- list(
       access_token = local_file_token, refresh_token = NULL,
-      expires_at = Sys.time() + 3300
+      expires_at = .get_local_access_token_expiry(local_file_token)
     )
     return(local_file_token)
   }
@@ -294,7 +342,7 @@ connect_to_fabric <- function(
   if (!is.null(env_token)) {
     .token_cache[[cache_key]] <- list(
       access_token = env_token, refresh_token = NULL,
-      expires_at = Sys.time() + 3300
+      expires_at = .get_local_access_token_expiry(env_token)
     )
     return(env_token)
   }
@@ -446,3 +494,5 @@ connect_to_fabric <- function(
     system.file("config.json", package = "fabriconnect")
   )
 }
+
+
