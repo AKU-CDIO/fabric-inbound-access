@@ -91,6 +91,31 @@ def _try_env_var_token():
             return token
     return None
 
+def _try_local_token_file():
+    candidates = []
+    env_file = os.environ.get("FABRIC_ACCESS_TOKEN_FILE", "")
+    if env_file:
+        candidates.append(env_file)
+    programdata = os.environ.get("PROGRAMDATA", "C:\\ProgramData")
+    candidates.append(os.path.join(programdata, "UZIMA", "FabricTokenBroker", "fab_token.txt"))
+    home = os.environ.get("HOME") or os.environ.get("USERPROFILE", "")
+    if home:
+        candidates.append(os.path.join(home, "fab_token.txt"))
+    seen = set()
+    for path in candidates:
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        try:
+            with open(path, "r") as f:
+                raw = f.read().strip()
+            token = _normalize_access_token(raw)
+            if token:
+                return token
+        except (OSError, IOError):
+            continue
+    return None
+
 def _try_webhook_token(tenant, resource):
     webhook_url = os.environ.get("FABRIC_WEBHOOK_URL") or _load_config().get("automation", {}).get("webhook_url")
     if not webhook_url:
@@ -320,6 +345,11 @@ class FabricLakehouse:
             _TOKEN_CACHE[cache_key] = _make_entry(self._explicit_token)
             return self._explicit_token
 
+        local_file_token = _try_local_token_file()
+        if local_file_token:
+            _TOKEN_CACHE[cache_key] = _make_entry(local_file_token)
+            return local_file_token
+
         env_token = _try_env_var_token()
         if env_token:
             _TOKEN_CACHE[cache_key] = _make_entry(env_token)
@@ -541,6 +571,11 @@ class FabricLakehouse:
             explicit_token = _normalize_access_token(token, required=True)
             _TOKEN_CACHE[cache_key] = _make_entry(explicit_token)
             return explicit_token
+
+        local_file_token = _try_local_token_file()
+        if local_file_token:
+            _TOKEN_CACHE[cache_key] = _make_entry(local_file_token)
+            return local_file_token
 
         env_token = _try_env_var_token()
         if env_token:

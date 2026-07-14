@@ -12,7 +12,7 @@ param(
       "action": "add_email"   — add email to whitelist (admin only)
       "action": "remove_email" — remove email from whitelist (admin only)
       "action": "list_emails" — list whitelisted emails (admin only)
-      "action": "refresh"     — force token refresh (admin only)
+      "action": "refresh"     — force token refresh (admin only) + sync to VM
 
     IP restriction checked against VM_IPS whitelist.
     Email whitelist stored in Key Vault or Automation Variables.
@@ -23,6 +23,7 @@ param(
       fabric-access-token     — current cached access token
       fabric-token-expiry     — Unix timestamp when access token expires
       researcher-whitelist    — JSON array of approved emails
+      fabric-listener-secret  — shared secret for VM HTTP listener
 #>
 
 # ─── Configuration ───────────────────────────────────────────────────────────
@@ -33,6 +34,10 @@ $VM_IPS            = @("4.245.225.10", "102.0.6.106")
 
 # Key Vault name — set this after deployment
 $KEY_VAULT_NAME    = "uzima-fabric-tokens"
+
+# VM listener config
+$VM_LISTENER_PORT  = 8443
+$VM_LISTENER_PATH  = "/refresh"
 
 # Automation Variable names (used if no Key Vault)
 $VAR_REFRESH_TOKEN = "fabric-refresh-token"
@@ -263,6 +268,41 @@ function Get-SessionToken {
     }
 }
 
+# ─── Helper: Sync to VM ──────────────────────────────────────────────────────
+function Sync-TokenToVm {
+    try {
+        # Get listener secret from Key Vault
+        $listenerSecret = Get-KvSecret -SecretName "fabric-listener-secret"
+        if (-not $listenerSecret) {
+            Write-Output "VM sync skipped: no listener secret in Key Vault"
+            return
+        }
+
+        # Get fresh access token to send to VM
+        $accessToken = Get-ValidAccessToken
+        if (-not $accessToken) {
+            Write-Output "VM sync skipped: no access token available"
+            return
+        }
+
+        # Call VM HTTP listener on each IP
+        foreach ($ip in $VM_IPS) {
+            try {
+                $url = "http://${ip}:${VM_LISTENER_PORT}${VM_LISTENER_PATH}"
+                $headers = @{ "X-Refresh-Secret" = $listenerSecret }
+                $body = @{ access_token = $accessToken } | ConvertTo-Json
+                
+                $response = Invoke-RestMethod -Uri $url -Method Post -Headers $headers -Body $body -ContentType "application/json" -TimeoutSec 10
+                Write-Output "VM sync to $ip : $($response.status)"
+            } catch {
+                Write-Output "VM sync to $ip failed: $($_.Exception.Message)"
+            }
+        }
+    } catch {
+        Write-Output "VM sync error: $($_.Exception.Message)"
+    }
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 $result = $null
 
@@ -312,8 +352,12 @@ try {
                 throw "Access denied: admin email not whitelisted."
             }
             $newToken = Refresh-AccessToken
-            $result = @{ status = "success"; message = "Token refreshed successfully" }
-            Write-Output "Manual token refresh completed"
+            
+            # Sync to VM for instant propagation
+            Sync-TokenToVm
+            
+            $result = @{ status = "success"; message = "Token refreshed and synced to VM" }
+            Write-Output "Manual token refresh completed + VM sync"
             break
         }
 
