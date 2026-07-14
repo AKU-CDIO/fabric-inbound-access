@@ -216,6 +216,27 @@ connect_to_fabric <- function(
 }
 
 
+
+#' @noRd
+.get_local_access_token_file <- function() {
+  candidates <- unique(c(
+    Sys.getenv("FABRIC_ACCESS_TOKEN_FILE", unset = ""),
+    file.path(Sys.getenv("USERPROFILE", unset = ""), "fab_token.txt"),
+    file.path(Sys.getenv("HOME", unset = ""), "fab_token.txt")
+  ))
+  candidates <- candidates[nzchar(candidates)]
+
+  for (path in candidates) {
+    if (!file.exists(path)) next
+    raw <- tryCatch(readLines(path, warn = FALSE, n = 1), error = function(e) character(0))
+    if (length(raw) == 0) next
+    token <- .normalize_access_token(raw[[1]], required = FALSE)
+    if (!is.null(token)) {
+      return(token)
+    }
+  }
+  NULL
+}
 #' @noRd
 .token_is_usable <- function(entry) {
   is.list(entry) && !is.null(entry$expires_at) && Sys.time() < entry$expires_at
@@ -236,6 +257,15 @@ connect_to_fabric <- function(
   }
 
   cache_key <- paste0(tenant, ":https://storage.azure.com")
+
+  local_file_token <- .get_local_access_token_file()
+  if (!is.null(local_file_token)) {
+    .token_cache[[cache_key]] <- list(
+      access_token = local_file_token, refresh_token = NULL,
+      expires_at = Sys.time() + 3300
+    )
+    return(local_file_token)
+  }
 
   entry <- if (exists(cache_key, envir = .token_cache, inherits = FALSE)) {
     .token_cache[[cache_key]]
