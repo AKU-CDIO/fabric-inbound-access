@@ -222,7 +222,8 @@ connect_to_fabric <- function(
   candidates <- unique(c(
     Sys.getenv("FABRIC_ACCESS_TOKEN_FILE", unset = ""),
     file.path(Sys.getenv("USERPROFILE", unset = ""), "fab_token.txt"),
-    file.path(Sys.getenv("HOME", unset = ""), "fab_token.txt")
+    file.path(Sys.getenv("HOME", unset = ""), "fab_token.txt"),
+    file.path(Sys.getenv("PROGRAMDATA", unset = "C:/ProgramData"), "UZIMA", "FabricTokenBroker", "fab_token.txt")
   ))
   candidates <- candidates[nzchar(candidates)]
 
