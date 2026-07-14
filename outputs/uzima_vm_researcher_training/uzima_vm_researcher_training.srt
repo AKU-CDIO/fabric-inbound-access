@@ -1,0 +1,39 @@
+1
+00:00:00,000 --> 00:00:07,000
+This short guide shows the normal path from portal login to RDP access, plus what to do when a 401 token error appears.
+
+2
+00:00:07,000 --> 00:00:14,000
+First, open the Uzima VM Control Portal and sign in with your approved AKU account.
+
+3
+00:00:14,000 --> 00:00:22,000
+After signing in, check the VM status. If it is stopped, start it and wait until it shows running.
+
+4
+00:00:22,000 --> 00:00:31,000
+When the VM is running, click Fix My RDP Access. The portal will repair the most common RDP blockers automatically.
+
+5
+00:00:31,000 --> 00:00:39,000
+Review the result panel. Green steps are complete. Amber warnings explain what still needs attention.
+
+6
+00:00:39,000 --> 00:00:47,000
+When access is updated, download the RDP file or copy the host, then connect with Microsoft Remote Desktop.
+
+7
+00:00:47,000 --> 00:00:54,000
+While working, use the session controls so the auto-shutdown guard knows the VM is still in use.
+
+8
+00:00:54,000 --> 00:01:03,000
+If Fabric or data access returns 401 unauthorized, go back to the portal and click Refresh Token, then retry your work.
+
+9
+00:01:03,000 --> 00:01:12,000
+If RDP still fails, run the fix again if your network changed. Otherwise, send the failed step to CDIO without sharing passwords or tokens.
+
+10
+00:01:12,000 --> 00:01:20,000
+The checklist is simple: sign in, check or start the VM, fix RDP access, connect, and refresh the token only when a 401 appears.
