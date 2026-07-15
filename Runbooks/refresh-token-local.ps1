@@ -256,6 +256,47 @@ try {
         Write-Log "Token expires: $exp"
 
         Write-Log "Token refresh completed successfully (local path)"
+
+        # ─── Propagate to all logged-in users ─────────────────────────────────
+        try {
+            $users = quser 2>$null | Select-Object -Skip 1
+            if ($users) {
+                foreach ($line in $users) {
+                    $trimmed = $line.Trim()
+                    # Remove > prefix for current user
+                    $trimmed = $trimmed.TrimStart('>')
+                    $parts = $trimmed -split '\s+'
+                    $username = $parts[0]
+                    if (-not $username -or $username -eq 'services') { continue }
+                    $userProfile = Get-WmiObject Win32_UserProfile | Where-Object {
+                        $_.LocalPath -like "*\$username" -and $_.Loaded -eq $true
+                    }
+                    if ($userProfile) {
+                        $userDir = $userProfile.LocalPath
+                        $destToken = "$userDir\fab_token.txt"
+                        try {
+                            Set-Content -Path $destToken -Value $accessToken -NoNewline -Force
+                            Write-Log "Propagated token to $username ($destToken)"
+                        } catch {
+                            Write-Log "Warning: could not write to $username : $($_.Exception.Message)"
+                        }
+                        # Update user registry env var for next session
+                        try {
+                            $sid = $userProfile.SID
+                            $regPath = "Registry::HKEY_USERS\$sid\Environment"
+                            if (Test-Path $regPath) {
+                                Set-ItemProperty -Path $regPath -Name "FABRIC_ACCESS_TOKEN" -Value $accessToken -Force
+                                Set-ItemProperty -Path $regPath -Name "FABRIC_DELEGATED_ACCESS_TOKEN" -Value $accessToken -Force
+                            }
+                        } catch { }
+                    }
+                }
+                Write-Log "Token propagated to all logged-in users"
+            }
+        } catch {
+            Write-Log "Warning: user propagation failed: $($_.Exception.Message)"
+        }
+
         exit 0
     } catch {
         Write-Log "Local refresh failed: $($_.Exception.Message)"
