@@ -1,44 +1,22 @@
 # Admin Checklist
 
-Use this checklist for personal-PC ODBC access.
+Use this checklist for the Key Vault plus managed identity ODBC model.
 
-## 1. Confirm Users
+## 1. Store ODBC Settings In Key Vault
 
-Confirm each researcher exists in the Fabric tenant as a member or guest user.
+From this project folder:
 
-Approved list:
-
-- `derick.imbati@aku.edu`
-- `rais.muhammad@aku.edu`
-- `dorcasm@umich.edu`
-- `yechank@med.umich.edu`
-- `nannab@med.umich.edu`
-
-If `az ad user show --id <email>` does not resolve a user, ask an Entra admin to confirm the exact guest UPN or object ID.
-
-## 2. Grant Fabric Access
-
-In the Fabric tenant:
-
-1. Add the users to the workspace or item.
-2. Prefer least privilege.
-3. Grant access to approved tables or masked views only.
-4. Use SQL permissions on the SQL analytics endpoint for table/view access.
-
-For example, after connecting as an admin to the SQL endpoint:
-
-```sql
--- Example only. Use the final approved table or masked view name.
-GRANT SELECT ON OBJECT::dbo.dimenrolledparticipants TO [user@domain.edu];
+```powershell
+.\scripts\set-keyvault-odbc-settings.ps1
 ```
 
-## 3. Lift Network Restrictions
+This stores:
 
-Remove VM-only inbound restrictions for the Fabric SQL endpoint.
+- `fabric-odbc-connection-string`
+- `fabric-managed-identity-client-id`
+- `fabric-managed-identity-object-id`
 
-The users' personal PCs need to reach the SQL analytics endpoint over ODBC. Microsoft Fabric supports ODBC connections to SQL analytics endpoints with Microsoft Entra authentication and ODBC Driver 18 or later.
-
-## 4. Update Key Vault Whitelist
+## 2. Store The Approved Email List
 
 From this project folder:
 
@@ -46,16 +24,48 @@ From this project folder:
 .\scripts\sync-keyvault-whitelist.ps1
 ```
 
-The Key Vault list is for admin tracking. It does not replace Fabric workspace, item, or SQL permissions.
+Approved emails:
 
-## 5. Researcher Test
+- `derick.imbati@aku.edu`
+- `rais.muhammad@aku.edu`
+- `dorcasm@umich.edu`
+- `yechank@med.umich.edu`
+- `nannab@med.umich.edu`
 
-Ask the researcher to open one of these examples:
+These emails are for the approval check. They are not Fabric logins in this model.
+
+## 3. Assign cdiofabric To The Azure Runner
+
+Use this managed identity:
+
+```text
+Identity name: cdiofabric
+Application ID: 4ae6ed7b-b72c-4853-9a3c-10699e60f63e
+Object ID: 8d88bbab-1c76-4bf0-b4f7-1cb49a001d9e
+```
+
+Assign it to the Azure Function, runbook worker, app service, or VM that runs the ODBC code.
+
+## 4. Grant Fabric Access To cdiofabric
+
+In Fabric, grant `cdiofabric` only the approved access.
+
+Prefer masked views. Do not grant raw PII tables unless approved.
+
+Example SQL permission:
+
+```sql
+GRANT SELECT ON OBJECT::dbo.dimenrolledparticipants TO [cdiofabric];
+```
+
+If Fabric shows a different principal name, use that exact name.
+
+## 5. Test ODBC
+
+Run one of these from the Azure-side runner or admin test environment:
 
 - `examples/r/fabric_odbc_researcher_guide.Rmd`
 - `examples/python/fabric_odbc_researcher.py`
 - `examples/python/fabric_odbc_researcher.ipynb`
 
-The examples already contain the Fabric server and use `uzima_db_backup` by default.
-
-If the researcher needs Fitbit or Qualtrics, change only the `DATABASE=` value inside the connection string.
+The example reads the ODBC connection string from Key Vault, then ODBC uses `cdiofabric` to connect to Fabric.

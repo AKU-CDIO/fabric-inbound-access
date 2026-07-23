@@ -1,72 +1,86 @@
 # UZIMA Fabric Data Access For Researchers
 
-This folder is for researchers who need to read approved UZIMA data from their own computer.
-
-It uses a normal ODBC connection to Microsoft Fabric. It is not part of the `fabriconnect` or `fabricpy` libraries, and it does not use the delegated token runbook.
-
-Each researcher signs in with their own approved Microsoft account. No shared Fabric token is given to researchers.
-
-## How Access Works
-
-1. The researcher is approved by AKU/CDIO.
-2. The researcher is added to Microsoft Fabric with their email address.
-3. The researcher runs one of the examples in this folder.
-4. A Microsoft sign-in window opens.
-5. The researcher signs in with the approved email.
-6. The script lists the tables/views they are allowed to read.
-7. The researcher reads a small sample from an approved table or masked view.
-
-Key Vault is only for admin tracking of the approved email list. Researchers do not need Key Vault access.
-
-## Current Fabric Connection
-
-The examples already contain this Fabric server:
+This folder uses a simple access path:
 
 ```text
-fis5jjpzajqe5fxqs4z3vlsjde-zgopmz6jacoezkc3hd6da52lpm.datawarehouse.fabric.microsoft.com
+Key Vault -> ODBC -> cdiofabric managed identity -> Microsoft Fabric
 ```
 
-The examples use `uzima_db_backup` by default.
+Researchers are not added directly to Fabric. Their email is used only to check that they are approved. Fabric access is done by the AKU/CDIO managed identity.
 
-The available database names are:
+```text
+Identity name: cdiofabric
+Application ID: 4ae6ed7b-b72c-4853-9a3c-10699e60f63e
+Object ID: 8d88bbab-1c76-4bf0-b4f7-1cb49a001d9e
+```
 
-- `uzima_db_backup`
-- `Fitbit`
-- `qualtrics`
+## How It Works
+
+1. The approved email list is stored in Key Vault.
+2. The ODBC connection string is stored in Key Vault.
+3. The connection string uses `Authentication=ActiveDirectoryMsi`.
+4. ODBC uses `cdiofabric` to reach Fabric.
+5. Fabric returns only the tables/views that `cdiofabric` is allowed to read.
+
+Researchers should not receive Fabric tokens or raw Key Vault secrets. Their personal computer should use the AKU/CDIO approved access route. The Azure side of that route reads Key Vault and connects to Fabric.
+
+## Key Vault Values
+
+Vault name:
+
+```text
+uzima-fabric-tokens
+```
+
+Main ODBC secret:
+
+```text
+fabric-odbc-connection-string
+```
+
+The secret value is:
+
+```text
+DRIVER={ODBC Driver 18 for SQL Server};SERVER=fis5jjpzajqe5fxqs4z3vlsjde-zgopmz6jacoezkc3hd6da52lpm.datawarehouse.fabric.microsoft.com;DATABASE=uzima_db_backup;Authentication=ActiveDirectoryMsi;UID=4ae6ed7b-b72c-4853-9a3c-10699e60f63e;Encrypt=yes;TrustServerCertificate=no;
+```
+
+The `UID` is the `cdiofabric` Application ID/client ID.
 
 ## Changing The Database
 
-In the R and Python examples, find this line inside the connection string:
+The examples use `uzima_db_backup` by default.
+
+To use another database, change only this part of the connection string:
 
 ```text
 DATABASE=uzima_db_backup;
 ```
 
-To use Fitbit data, change it to:
+Use one of these values:
 
 ```text
+DATABASE=uzima_db_backup;
 DATABASE=Fitbit;
-```
-
-To use Qualtrics data, change it to:
-
-```text
 DATABASE=qualtrics;
 ```
 
-That is the only change needed to open a different database.
+In Python, this one line changes the database after reading the connection string from Key Vault:
+
+```python
+connection_string = connection_string.replace("DATABASE=uzima_db_backup;", "DATABASE=Fitbit;")
+```
+
+In R, this one line does the same:
+
+```r
+connection_string <- sub("DATABASE=uzima_db_backup;", "DATABASE=Fitbit;", connection_string)
+```
 
 ## Reading One Table
 
-After the script connects, it shows the tables/views you are allowed to read.
+After the script connects, it shows the tables/views that `cdiofabric` is allowed to read.
 
-To read one table, change the table name line.
-
-In R:
-
-```r
-table_to_read <- "dbo.dimenrolledparticipants"
-```
+To read one approved table or masked view, change this line.
 
 In Python:
 
@@ -74,39 +88,25 @@ In Python:
 table_to_read = "dbo.dimenrolledparticipants"
 ```
 
-Use the table or masked view name your AKU/CDIO contact gave you.
-
-## Combining Data From Two Databases
-
-You can combine two approved tables in one step. This is useful when, for example, you want participant details from `uzima_db_backup` and Fitbit steps from `Fitbit`.
-
-Use this only when you have been approved for both datasets.
-
 In R:
 
 ```r
-merge_question <- "
-SELECT TOP 100
-  p.ParticipantIdentifier,
-  p.Gender,
-  p.Age,
-  f.date,
-  f.steps
-FROM uzima_db_backup.dbo.dimenrolledparticipants p
-JOIN Fitbit.dbo.fitbitdailydata f
-  ON p.ParticipantIdentifier = f.participantidentifier
-"
-
-merged_data <- DBI::dbGetQuery(con, merge_question)
-merged_data
+table_to_read <- "dbo.dimenrolledparticipants"
 ```
+
+Use the approved table or masked view name provided by AKU/CDIO.
+
+## Combining Data From Two Databases
+
+You can combine two approved tables in one step. This is useful when, for example, you want participant age/gender from `uzima_db_backup` and Fitbit steps from `Fitbit`.
+
+The matching ID is used only to join the tables. It is not shown in the result below.
 
 In Python:
 
 ```python
 merge_question = """
 SELECT TOP 100
-  p.ParticipantIdentifier,
   p.Gender,
   p.Age,
   f.date,
@@ -120,19 +120,37 @@ merged_data = pd.read_sql(merge_question, connection)
 print(merged_data)
 ```
 
-If Fabric says a table cannot be found, check the table list shown by the script. The table name may be different, or your account may not yet have access.
+In R:
+
+```r
+merge_question <- "
+SELECT TOP 100
+  p.Gender,
+  p.Age,
+  f.date,
+  f.steps
+FROM uzima_db_backup.dbo.dimenrolledparticipants p
+JOIN Fitbit.dbo.fitbitdailydata f
+  ON p.ParticipantIdentifier = f.participantidentifier
+"
+
+merged_data <- DBI::dbGetQuery(con, merge_question)
+merged_data
+```
+
+If Fabric says a table cannot be found, the table name may be different or `cdiofabric` may not have access yet.
 
 ## Privacy Reminder
 
-Researchers should use approved tables or masked views only.
+Use approved tables or masked views only.
 
-Do not read columns such as names, emails, phone numbers, exact addresses, dates of birth, postal codes, device IDs, or direct participant identifiers unless that access has been specifically approved.
+Do not return names, emails, phone numbers, exact addresses, dates of birth, postal codes, device IDs, or direct participant identifiers unless that access has been specifically approved.
 
 When masked views are provided, use the masked view instead of the raw table.
 
-## Approved Researchers
+## Approved Researcher Emails
 
-Current approved emails for the Key Vault whitelist:
+These emails are stored in Key Vault for the approval check:
 
 - `derick.imbati@aku.edu`
 - `rais.muhammad@aku.edu`
@@ -140,41 +158,23 @@ Current approved emails for the Key Vault whitelist:
 - `yechank@med.umich.edu`
 - `nannab@med.umich.edu`
 
-Note: `rais.muhammad@aku.edu` was found in local Azure activity records, but `az ad user show --id rais.muhammad@aku.edu` did not resolve in the current Azure CLI session. Ask an Entra admin or someone with Directory Readers to confirm Rais's exact user principal name or object ID.
+## Examples
 
-## Researcher Setup
+R Markdown:
 
-Install:
+- [examples/r/fabric_odbc_researcher_guide.Rmd](examples/r/fabric_odbc_researcher_guide.Rmd)
 
-- Microsoft ODBC Driver 18 for SQL Server
-- For R: RStudio, `DBI`, and `odbc`
-- For Python: Python, `pyodbc`, and `pandas`
-
-## R Markdown Example
-
-Open [examples/r/fabric_odbc_researcher_guide.Rmd](examples/r/fabric_odbc_researcher_guide.Rmd) in RStudio and run the sections from top to bottom.
-
-## Python Examples
-
-Use either:
+Python:
 
 - [examples/python/fabric_odbc_researcher.py](examples/python/fabric_odbc_researcher.py)
 - [examples/python/fabric_odbc_researcher.ipynb](examples/python/fabric_odbc_researcher.ipynb)
 
 ## Admin Notes
 
-For personal PC access, public access to the Fabric SQL analytics endpoint must be allowed. Then rely on Microsoft sign-in, Fabric permissions, and SQL permissions.
-
-Researchers should be granted access only to approved tables or masked views. Do not grant raw PII tables unless that has been explicitly approved.
+Use [scripts/set-keyvault-odbc-settings.ps1](scripts/set-keyvault-odbc-settings.ps1) to store the ODBC connection string and managed identity IDs in Key Vault.
 
 Use [scripts/sync-keyvault-whitelist.ps1](scripts/sync-keyvault-whitelist.ps1) to update the approved email list in Key Vault.
 
-Use [scripts/check-azure-users.ps1](scripts/check-azure-users.ps1) to check whether emails resolve in the current Azure tenant.
+Make sure the Azure Function, runbook worker, app service, or VM that runs ODBC has the `cdiofabric` managed identity assigned.
 
-## Important Notes
-
-- ODBC access does not use the token broker or delegated refresh token.
-- ODBC access does not need the R/Python package auth helpers.
-- Researchers authenticate as themselves.
-- If a researcher can sign in but sees no tables, check Fabric workspace, SQL endpoint, and SQL permissions.
-- If a researcher cannot connect at all, check that network restrictions were lifted for the SQL endpoint and that ODBC Driver 18 is installed.
+Then grant `cdiofabric` access in Fabric and SQL to only the approved tables or masked views.

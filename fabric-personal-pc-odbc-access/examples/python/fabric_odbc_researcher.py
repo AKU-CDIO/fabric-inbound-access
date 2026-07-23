@@ -1,14 +1,17 @@
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 import pandas as pd
 import pyodbc
 
-connection_string = (
-    "DRIVER={ODBC Driver 18 for SQL Server};"
-    "SERVER=fis5jjpzajqe5fxqs4z3vlsjde-zgopmz6jacoezkc3hd6da52lpm.datawarehouse.fabric.microsoft.com;"
-    "DATABASE=uzima_db_backup;"
-    "Authentication=ActiveDirectoryInteractive;"
-    "Encrypt=yes;"
-    "TrustServerCertificate=no;"
+vault = SecretClient(
+    vault_url="https://uzima-fabric-tokens.vault.azure.net/",
+    credential=DefaultAzureCredential(),
 )
+
+connection_string = vault.get_secret("fabric-odbc-connection-string").value
+
+# To use another database, change only the database name.
+# connection_string = connection_string.replace("DATABASE=uzima_db_backup;", "DATABASE=Fitbit;")
 
 table_to_read = "dbo.dimenrolledparticipants"
 

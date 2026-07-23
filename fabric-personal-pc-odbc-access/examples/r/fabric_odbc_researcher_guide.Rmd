@@ -3,11 +3,11 @@ title: "UZIMA Fabric Data Access"
 output: html_document
 ---
 
-# Sign In And Read Data
+# Read Data Through Key Vault And cdiofabric
 
-Use this file from your personal computer after your account has been approved for Fabric access.
+This example reads the ODBC connection string from Key Vault.
 
-Run the sections from top to bottom. When Microsoft asks you to sign in, use your approved email address.
+The connection string uses the `cdiofabric` managed identity to connect to Fabric.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = FALSE)
@@ -15,27 +15,21 @@ knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = FALSE)
 
 # 1. Connect
 
-This uses Microsoft sign-in. To use Fitbit or Qualtrics, change only `Database=uzima_db_backup` in the connection string.
-
 ```{r connect}
+if (!requireNamespace("AzureKeyVault", quietly = TRUE)) install.packages("AzureKeyVault")
 if (!requireNamespace("DBI", quietly = TRUE)) install.packages("DBI")
 if (!requireNamespace("odbc", quietly = TRUE)) install.packages("odbc")
 
-connection_string <- paste0(
-  "Driver={ODBC Driver 18 for SQL Server};",
-  "Server=fis5jjpzajqe5fxqs4z3vlsjde-zgopmz6jacoezkc3hd6da52lpm.datawarehouse.fabric.microsoft.com;",
-  "Database=uzima_db_backup;",
-  "Authentication=ActiveDirectoryInteractive;",
-  "Encrypt=yes;",
-  "TrustServerCertificate=no;"
-)
+vault <- AzureKeyVault::key_vault("https://uzima-fabric-tokens.vault.azure.net/")
+connection_string <- vault$secrets$get("fabric-odbc-connection-string")$value
+
+# To use another database, change only the database name.
+# connection_string <- sub("DATABASE=uzima_db_backup;", "DATABASE=Fitbit;", connection_string)
 
 con <- DBI::dbConnect(odbc::odbc(), .connection_string = connection_string)
 ```
 
 # 2. See Available Tables
-
-This shows the tables or views you are allowed to read.
 
 ```{r list-tables}
 tables <- DBI::dbGetQuery(con, "
@@ -49,7 +43,7 @@ head(tables, 30)
 
 # 3. Read A Small Sample
 
-After you see the table list, change `table_to_read` to the approved table or masked view you need.
+Change `table_to_read` to the approved table or masked view you need.
 
 ```{r read-sample}
 table_to_read <- "dbo.dimenrolledparticipants"

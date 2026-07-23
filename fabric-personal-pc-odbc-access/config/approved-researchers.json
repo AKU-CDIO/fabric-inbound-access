@@ -1,6 +1,12 @@
 {
   "keyVaultName": "uzima-fabric-tokens",
-  "secretName": "researcher-whitelist",
+  "researcherWhitelistSecretName": "researcher-whitelist",
+  "odbcConnectionStringSecretName": "fabric-odbc-connection-string",
+  "managedIdentity": {
+    "name": "cdiofabric",
+    "applicationId": "4ae6ed7b-b72c-4853-9a3c-10699e60f63e",
+    "objectId": "8d88bbab-1c76-4bf0-b4f7-1cb49a001d9e"
+  },
   "emails": [
     "derick.imbati@aku.edu",
     "rais.muhammad@aku.edu",
@@ -9,8 +15,9 @@
     "nannab@med.umich.edu"
   ],
   "notes": [
-    "This list is for admin approval tracking.",
-    "Do not give researchers direct Key Vault secret access.",
-    "ODBC users must still be granted access in the Fabric tenant/workspace."
+    "Researchers are checked against this list before the Azure side uses cdiofabric.",
+    "Researchers do not sign in to Fabric with these email addresses.",
+    "Do not give researchers Fabric tokens.",
+    "ODBC reads its connection string from Key Vault and uses cdiofabric managed identity authentication."
   ]
 }
