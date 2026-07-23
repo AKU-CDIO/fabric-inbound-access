@@ -7,7 +7,7 @@ output: html_document
 
 This example reads the ODBC connection string from Key Vault.
 
-The connection string uses the `cdiofabric` managed identity to connect to Fabric.
+The connection string uses the `cdiofabric` managed identity to connect to Fabric. It must not use browser or email sign-in.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = FALSE)
@@ -20,11 +20,22 @@ if (!requireNamespace("AzureKeyVault", quietly = TRUE)) install.packages("AzureK
 if (!requireNamespace("DBI", quietly = TRUE)) install.packages("DBI")
 if (!requireNamespace("odbc", quietly = TRUE)) install.packages("odbc")
 
+# Change only this value when you need another database.
+# Options: "uzima_db_backup", "HCW_fitbit_data", "Qualtrics"
+database_name <- "uzima_db_backup"
+
 vault <- AzureKeyVault::key_vault("https://uzima-fabric-tokens.vault.azure.net/")
 connection_string <- vault$secrets$get("fabric-odbc-connection-string")$value
 
-# To use another database, change only the database name.
-# connection_string <- sub("DATABASE=uzima_db_backup;", "DATABASE=Fitbit;", connection_string)
+if (grepl("Interactive", connection_string, fixed = TRUE)) {
+  stop("Key Vault ODBC secret must use managed identity auth, not browser or email sign-in.")
+}
+
+if (!grepl("Authentication=ActiveDirectoryMsi", connection_string, fixed = TRUE)) {
+  stop("Key Vault ODBC secret is missing Authentication=ActiveDirectoryMsi.")
+}
+
+connection_string <- sub("DATABASE=[^;]+;", paste0("DATABASE=", database_name, ";"), connection_string)
 
 con <- DBI::dbConnect(odbc::odbc(), .connection_string = connection_string)
 ```
@@ -52,7 +63,27 @@ sample_data <- DBI::dbGetQuery(con, paste("SELECT TOP 10 * FROM", table_to_read)
 sample_data
 ```
 
-# 4. Close The Connection
+# 4. Combine Two Approved Tables
+
+Use this only when `cdiofabric` has access to both approved tables or masked views.
+
+```{r combine-data, eval=FALSE}
+merge_question <- "
+SELECT TOP 100
+  p.Gender,
+  p.Age,
+  f.date,
+  f.steps
+FROM uzima_db_backup.dbo.dimenrolledparticipants p
+JOIN HCW_fitbit_data.dbo.fitbitdailydata f
+  ON p.ParticipantIdentifier = f.participantidentifier
+"
+
+merged_data <- DBI::dbGetQuery(con, merge_question)
+merged_data
+```
+
+# 5. Close The Connection
 
 ```{r disconnect}
 DBI::dbDisconnect(con)

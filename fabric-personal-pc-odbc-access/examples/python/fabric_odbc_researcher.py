@@ -3,6 +3,10 @@ from azure.keyvault.secrets import SecretClient
 import pandas as pd
 import pyodbc
 
+# Change only this value when you need another database.
+# Options: "uzima_db_backup", "HCW_fitbit_data", "Qualtrics"
+database_name = "uzima_db_backup"
+
 vault = SecretClient(
     vault_url="https://uzima-fabric-tokens.vault.azure.net/",
     credential=DefaultAzureCredential(),
@@ -10,8 +14,15 @@ vault = SecretClient(
 
 connection_string = vault.get_secret("fabric-odbc-connection-string").value
 
-# To use another database, change only the database name.
-# connection_string = connection_string.replace("DATABASE=uzima_db_backup;", "DATABASE=Fitbit;")
+if "Interactive" in connection_string:
+    raise SystemExit("Key Vault ODBC secret must use managed identity auth, not browser or email sign-in.")
+
+if "Authentication=ActiveDirectoryMsi" not in connection_string:
+    raise SystemExit("Key Vault ODBC secret is missing Authentication=ActiveDirectoryMsi.")
+
+parts = connection_string.split(";")
+parts = [f"DATABASE={database_name}" if part.upper().startswith("DATABASE=") else part for part in parts]
+connection_string = ";".join(parts)
 
 table_to_read = "dbo.dimenrolledparticipants"
 

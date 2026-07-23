@@ -1,18 +1,15 @@
 # ============================================================================
 # HCW Student Survey Analysis
 #
-# ORIGINAL: Used ODBC → SQL Server (uzima-dmac.database.windows.net)
-#           with ActiveDirectoryInteractive authentication.
-#           Required ODBC Driver 17, TDS port 1433, firewall rules.
+# LEGACY:   Older notes used ODBC with browser/email sign-in. Do not use that
+#           path for researchers.
 #
-# NOW:      Uses fabriconnect → Fabric Lakehouse (OneLake HTTPS).
-#           No ODBC driver, no TDS port, no hardcoded credentials.
-#           All traffic on port 443.
+# APPROVED: ODBC access now reads the connection string from Key Vault and uses
+#           the cdiofabric managed identity. Managed identity examples live in:
+#           fabric-personal-pc-odbc-access/examples/r/fabric_odbc_researcher_guide.Rmd
 #
-# Prerequisites:
-#   1. az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
-#   2. remotes::install_github("AKU-CDIO/fabric-inbound-access",
-#        subdir = "fabriconnect", force = TRUE, upgrade_dependencies = FALSE)
+# NOW:      This script uses fabriconnect / Fabric Lakehouse where approved.
+#           No personal researcher Fabric login is required.
 # ============================================================================
 
 df_list <- list()
@@ -32,17 +29,9 @@ library(vctrs)
 library(tidyquant)
 library(fabriconnect)
 
-# ---- Connect (replaces ODBC) ----
-# OLD:
-#   con <- dbConnect(odbc(),
-#     Driver = 'ODBC Driver 17 for SQL Server',
-#     Server = 'uzima-dmac.database.windows.net',
-#     Database = 'Uzima_db',
-#     username = '',
-#     Authentication = 'ActiveDirectoryInteractive')
-#   baseline <- dbGetQuery(con, "SELECT * FROM [dbo].[Qualtrics_HCW_Student_Survey]")
-#
-# NEW: fabriconnect reads from the Lakehouse table directly via HTTPS.
+# ---- Connect ----
+# For direct ODBC, use the managed identity example in:
+# fabric-personal-pc-odbc-access/examples/r/fabric_odbc_researcher_guide.Rmd
 conn <- connect_to_fabric()
 baseline <- read_table(conn, "qualtrics_hcw_student_survey")
 
@@ -82,10 +71,6 @@ summary(age)
 #                    "writexl", "readxl"))
 
 # ---- Utility: fetch any query ----
-# OLD: dbSendQuery(con, query) + dbFetch + dbClearResult
-# NEW: query_tables(conn, query) via Fabric OneLake SQL
 fetch_data <- function(query) {
   query_tables(conn, query)
 }
-
-

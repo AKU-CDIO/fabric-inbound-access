@@ -16,6 +16,14 @@ This stores:
 - `fabric-managed-identity-client-id`
 - `fabric-managed-identity-object-id`
 
+The ODBC connection string must use:
+
+```text
+Authentication=ActiveDirectoryMsi;UID=4ae6ed7b-b72c-4853-9a3c-10699e60f63e;
+```
+
+Do not use browser/email sign-in auth. Researchers do not have Fabric access through their own email accounts.
+
 ## 2. Store The Approved Email List
 
 From this project folder:
@@ -68,4 +76,10 @@ Run one of these from the Azure-side runner or admin test environment:
 - `examples/python/fabric_odbc_researcher.py`
 - `examples/python/fabric_odbc_researcher.ipynb`
 
-The example reads the ODBC connection string from Key Vault, then ODBC uses `cdiofabric` to connect to Fabric.
+The example reads the ODBC connection string from Key Vault, verifies that it uses managed identity auth, and then connects to Fabric.
+
+To switch datasets, change only the example's `database_name` value to one of:
+
+- `uzima_db_backup`
+- `HCW_fitbit_data`
+- `Qualtrics`

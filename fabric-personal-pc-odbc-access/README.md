@@ -38,11 +38,13 @@ Main ODBC secret:
 fabric-odbc-connection-string
 ```
 
-The secret value is:
+The secret value must use managed identity auth:
 
 ```text
 DRIVER={ODBC Driver 18 for SQL Server};SERVER=fis5jjpzajqe5fxqs4z3vlsjde-zgopmz6jacoezkc3hd6da52lpm.datawarehouse.fabric.microsoft.com;DATABASE=uzima_db_backup;Authentication=ActiveDirectoryMsi;UID=4ae6ed7b-b72c-4853-9a3c-10699e60f63e;Encrypt=yes;TrustServerCertificate=no;
 ```
+
+Do not use browser/email sign-in auth. Researchers do not have Fabric access through their own email accounts.
 
 The `UID` is the `cdiofabric` Application ID/client ID.
 
@@ -50,30 +52,32 @@ The `UID` is the `cdiofabric` Application ID/client ID.
 
 The examples use `uzima_db_backup` by default.
 
-To use another database, change only this part of the connection string:
+To use another database, change only this line in the R or Python example:
 
 ```text
-DATABASE=uzima_db_backup;
+database_name = "uzima_db_backup"
 ```
 
-Use one of these values:
+Allowed values:
 
 ```text
-DATABASE=uzima_db_backup;
-DATABASE=Fitbit;
-DATABASE=qualtrics;
+uzima_db_backup
+HCW_fitbit_data
+Qualtrics
 ```
 
-In Python, this one line changes the database after reading the connection string from Key Vault:
+The example reads the connection string from Key Vault and then swaps only the database name. The authentication still stays managed identity.
+
+In Python:
 
 ```python
-connection_string = connection_string.replace("DATABASE=uzima_db_backup;", "DATABASE=Fitbit;")
+database_name = "HCW_fitbit_data"
 ```
 
-In R, this one line does the same:
+In R:
 
 ```r
-connection_string <- sub("DATABASE=uzima_db_backup;", "DATABASE=Fitbit;", connection_string)
+database_name <- "HCW_fitbit_data"
 ```
 
 ## Reading One Table
@@ -98,7 +102,7 @@ Use the approved table or masked view name provided by AKU/CDIO.
 
 ## Combining Data From Two Databases
 
-You can combine two approved tables in one step. This is useful when, for example, you want participant age/gender from `uzima_db_backup` and Fitbit steps from `Fitbit`.
+You can combine two approved tables in one step. This is useful when, for example, you want participant age/gender from `uzima_db_backup` and Fitbit steps from `HCW_fitbit_data`.
 
 The matching ID is used only to join the tables. It is not shown in the result below.
 
@@ -112,7 +116,7 @@ SELECT TOP 100
   f.date,
   f.steps
 FROM uzima_db_backup.dbo.dimenrolledparticipants p
-JOIN Fitbit.dbo.fitbitdailydata f
+JOIN HCW_fitbit_data.dbo.fitbitdailydata f
   ON p.ParticipantIdentifier = f.participantidentifier
 """
 
@@ -130,7 +134,7 @@ SELECT TOP 100
   f.date,
   f.steps
 FROM uzima_db_backup.dbo.dimenrolledparticipants p
-JOIN Fitbit.dbo.fitbitdailydata f
+JOIN HCW_fitbit_data.dbo.fitbitdailydata f
   ON p.ParticipantIdentifier = f.participantidentifier
 "
 
