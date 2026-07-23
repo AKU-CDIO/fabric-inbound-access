@@ -16,31 +16,13 @@ We've added a new authentication method that lets you connect directly to Micros
 
 1. **Windows or Mac** computer
 2. **R and RStudio** installed
-3. **Azure CLI** installed (Windows only — free from Microsoft)
-4. Your AKU email address
+3. Your AKU email address (or whitelisted email)
 
-**Windows users:** Full SQL access with `auth = "sp_vault"`
-**Mac users:** Table access with `auth = "device_code"`
+**Works on both Windows and Mac** — no special setup needed.
 
 ## Quick Setup (5 minutes)
 
-### Windows users
-
-1. Install Azure CLI: https://aka.ms/installazurecli
-2. Open Command Prompt and run: `az login`
-3. Sign in with your AKU email
-4. Open RStudio and run:
-
-```r
-remotes::install_github("AKU-CDIO/fabric-inbound-access",
-  subdir = "fabriconnect", force = TRUE)
-
-library(fabriconnect)
-conn <- connect_to_fabric(auth = "sp_vault")
-list_tables(conn)
-```
-
-### Mac users
+### Windows and Mac
 
 1. Open RStudio and run:
 
@@ -49,9 +31,12 @@ remotes::install_github("AKU-CDIO/fabric-inbound-access",
   subdir = "fabriconnect", force = TRUE)
 
 library(fabriconnect)
-conn <- connect_to_fabric()  # Opens browser for login
+conn <- connect_to_fabric(auth = "sp_vault")  # Opens browser for login
 list_tables(conn)
 ```
+
+2. A browser window will open — sign in with your AKU email
+3. Done! You now have access to UZIMA data
 
 ## What You Can Do
 

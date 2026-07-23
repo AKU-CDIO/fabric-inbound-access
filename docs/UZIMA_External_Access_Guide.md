@@ -15,14 +15,11 @@ This guide explains how to access UZIMA study data from Microsoft Fabric on your
 - R and RStudio installed
 - Internet connection
 
-**Two connection methods:**
+**One connection method for all platforms:**
 
-| Method | OS | Auth | Access Level |
-|---|---|---|---|
-| `auth = "sp_vault"` | Windows only | Service Principal via Key Vault | Full SQL (joins, aggregations) |
-| `auth = "device_code"` | Windows or Mac | Browser login (MFA) | OneLake Delta Lake (read tables) |
-
-**Recommended:** Use `auth = "sp_vault"` on Windows for full SQL access. Use `auth = "device_code"` on Mac for table access.
+Use `auth = "sp_vault"` — it works on both Windows and Mac:
+- **Windows:** Uses ODBC for full SQL access
+- **Mac:** Uses Fabric REST API with SP credentials
 
 ---
 
@@ -36,15 +33,15 @@ If you don't have R and RStudio installed:
 2. Download RStudio from: https://posit.co/download/rstudio-desktop/
 3. Install both (accept default settings)
 
-### 1.2 Install Azure CLI (Windows only — for sp_vault auth)
+### 1.2 Install Azure CLI (Windows only — optional, for faster auth)
 
-**Windows users only:** If you want full SQL access via `auth = "sp_vault"`:
+**Windows users only:** If you want faster authentication without browser prompts:
 
 1. Download from: https://aka.ms/installazurecli
 2. Run the installer (accept default settings)
 3. Restart your computer after installation
 
-**Mac users:** Skip this step — use `auth = "device_code"` instead.
+**Mac users:** Skip this step — you'll authenticate via browser on first connect.
 
 ### 1.3 Verify Azure CLI (Windows only)
 
@@ -81,9 +78,9 @@ install.packages("remotes")
 
 ## Step 3: Sign In to Azure
 
-### Windows users (sp_vault auth)
+### Windows users (optional — for faster auth)
 
-Open **Command Prompt** or **PowerShell** and run:
+If you installed Azure CLI, open **Command Prompt** or **PowerShell** and run:
 
 ```bash
 az login
@@ -93,7 +90,7 @@ A browser window will open. Sign in with your AKU email address and complete the
 
 **Note:** You must sign in once per session. If you restart your computer, you'll need to sign in again.
 
-### Mac users (device_code auth)
+### Mac users
 
 No sign-in needed — you'll authenticate when you first connect from R.
 
@@ -101,7 +98,7 @@ No sign-in needed — you'll authenticate when you first connect from R.
 
 ## Step 4: Connect to Fabric
 
-### Windows users (recommended: sp_vault)
+### All platforms (Windows and Mac)
 
 ```r
 library(fabriconnect)
@@ -110,18 +107,7 @@ library(fabriconnect)
 conn <- connect_to_fabric(auth = "sp_vault")
 ```
 
-### Mac users (device_code)
-
-```r
-library(fabriconnect)
-
-# Connect — will prompt for browser login
-conn <- connect_to_fabric()
-```
-
-A browser window will open. Sign in with your AKU email and complete MFA. The connection will be established automatically.
-
-**Note:** The first time you run this, it may take 10-15 seconds to authenticate.
+**Note:** On first connect, you may be prompted to sign in via browser (device code). This authenticates to Key Vault to fetch SP credentials.
 
 ---
 
@@ -187,8 +173,9 @@ head(df_surveys)
 
 ## Step 7: Common Tasks
 
-### Filter data (Windows: sp_vault)
+### Filter data
 
+**Windows (SQL):**
 ```r
 df <- DBI::dbGetQuery(conn, "
   SELECT ParticipantIdentifier, Gender, DateOfBirth
@@ -197,8 +184,7 @@ df <- DBI::dbGetQuery(conn, "
 ")
 ```
 
-### Filter data (Mac: device_code)
-
+**Mac (R filtering):**
 ```r
 df <- read_table(conn, "dimenrolledparticipants")
 df <- df[df$Gender == "Female", ]
@@ -206,7 +192,7 @@ df <- df[df$Gender == "Female", ]
 
 ### Select specific columns
 
-**Windows (sp_vault):**
+**Windows (SQL):**
 ```r
 df <- DBI::dbGetQuery(conn, "
   SELECT ParticipantIdentifier, Gender, PostalCode
@@ -214,13 +200,13 @@ df <- DBI::dbGetQuery(conn, "
 ")
 ```
 
-**Mac (device_code):**
+**Mac (columns parameter):**
 ```r
 df <- read_table(conn, "dimenrolledparticipants",
                  columns = c("ParticipantIdentifier", "Gender", "PostalCode"))
 ```
 
-### Join tables (Windows: sp_vault only)
+### Join tables (Windows: SQL)
 
 ```r
 participants <- DBI::dbGetQuery(conn, "
@@ -241,7 +227,23 @@ df <- merge(participants, steps,
 head(df)
 ```
 
-### Cross-database join (Windows: sp_vault only)
+### Join tables (Mac: R merge)
+
+```r
+participants <- read_table(conn, "dimenrolledparticipants")
+steps <- read_table(conn, "factfitbitdailydata")
+
+# Aggregate steps by participant
+steps_agg <- aggregate(steps ~ participantidentifier, data = steps, FUN = sum)
+
+df <- merge(participants, steps_agg,
+            by.x = "ParticipantIdentifier",
+            by.y = "participantidentifier",
+            all.x = TRUE")
+head(df)
+```
+
+### Cross-database join (Windows: SQL only)
 
 ```r
 # Connect to both databases
@@ -318,7 +320,7 @@ Install the ODBC driver from: https://learn.microsoft.com/en-us/sql/connect/odbc
 
 Run `az login` again in Command Prompt or PowerShell.
 
-### Mac: Device code auth not working
+### Mac/Linux: Device code auth not working
 
 Make sure you're using the latest version of the package:
 
@@ -327,17 +329,12 @@ remotes::install_github("AKU-CDIO/fabric-inbound-access",
   subdir = "fabriconnect", force = TRUE)
 ```
 
-### Both: "Environment variable is not set"
+### Both: "Failed to get Fabric token from SP credentials"
 
-This should not happen with `auth = "sp_vault"` or `auth = "device_code"`. If you see this, make sure you're using the correct syntax:
-
-```r
-# Windows
-conn <- connect_to_fabric(auth = "sp_vault")
-
-# Mac
-conn <- connect_to_fabric()
-```
+The SP credentials may be invalid. Contact the admin to verify:
+- `fabric-sp-tenant-id`
+- `fabric-sp-client-id`
+- `fabric-sp-client-secret`
 
 ### Both: Table not found
 
@@ -365,15 +362,15 @@ df <- read_table(conn, "fitbitdailydata")
 df <- df[df$participantidentifier == "P-AKU-11-22" & df$date >= "2023-01-01", ]
 ```
 
-### Mac: "No authentication method available"
+### Mac: First connect is slow
 
-Try again — the device code may have expired. If the issue persists, contact the admin.
+First connect may take 10-15 seconds as it authenticates to Key Vault and fetches SP credentials. Subsequent connects are faster.
 
 ---
 
 ## Quick Reference Card
 
-### Windows (sp_vault — full SQL access)
+### All platforms (Windows, Mac, Linux)
 
 ```r
 # Load library
@@ -390,36 +387,44 @@ list_tables(conn_hcw)
 # Read table
 df <- read_table(conn, "dimenrolledparticipants")
 
-# SQL query
+# SQL query (Windows only — uses ODBC)
 df <- DBI::dbGetQuery(conn, "SELECT * FROM dimenrolledparticipants")
 
-# Disconnect
+# Disconnect (Windows only — ODBC connections)
 DBI::dbDisconnect(conn)
 DBI::dbDisconnect(conn_hcw)
 ```
 
-### Mac (device_code — table access)
+### Windows: Full SQL access
 
 ```r
-# Load library
-library(fabriconnect)
+# Connect
+conn <- connect_to_fabric(auth = "sp_vault")
 
-# Connect (opens browser for login)
-conn <- connect_to_fabric()
-conn_hcw <- connect_to_fabric(lakehouse_name = "HCW_fitbit_data")
+# Cross-database query
+df <- DBI::dbGetQuery(conn, "
+  SELECT p.ParticipantIdentifier, f.date, f.steps
+  FROM uzima_db_backup.dbo.dimenrolledparticipants p
+  JOIN HCW_fitbit_data.dbo.fitbitdailydata f
+    ON p.ParticipantIdentifier = f.participantidentifier
+")
 
-# List tables
-list_tables(conn)
-list_tables(conn_hcw)
+# Disconnect
+DBI::dbDisconnect(conn)
+```
 
-# Read table
+### Mac: Table access via REST API
+
+```r
+# Connect
+conn <- connect_to_fabric(auth = "sp_vault")
+
+# List and read tables
+tables <- list_tables(conn)
 df <- read_table(conn, "dimenrolledparticipants")
 
 # Filter in R
 df <- df[df$Gender == "Female", ]
-
-# Disconnect
-# (OneLake connections don't need explicit disconnect)
 ```
 
 ---

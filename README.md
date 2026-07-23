@@ -98,11 +98,13 @@ Researchers never need to authenticate. All steps happen automatically in the ba
 
 For **external researchers** outside the approved VM, use `auth = "sp_vault"`.
 
+**Works on Windows, Mac, and Linux.** On first connect, you'll be prompted to sign in via browser (device code) to access Key Vault.
+
 ### Prerequisites
 
-1. **Azure CLI** — install from https://aka.ms/installazurecli
-2. **Sign in** — run `az login` in terminal (interactive device code)
-3. **R packages** — `odbc`, `processx` (installed automatically)
+1. **R packages** — `processx` (installed automatically)
+2. **Windows only:** Azure CLI + ODBC Driver 18 (for full SQL access)
+3. **Mac / Linux:** No extra installs needed
 
 ### Step 1: Connect
 
@@ -310,7 +312,7 @@ See [Runbooks/README.md](Runbooks/README.md) for deploying the token broker syst
 
 Expected. Fabric inbound access is restricted to the approved VM (`uzima`).
 
-Use `auth = "sp_vault"` for external access.
+Use `auth = "sp_vault"` for external access (works on Windows, Mac, and Linux).
 
 ### I get "No authentication method available"
 
@@ -321,14 +323,14 @@ Run the test script to verify: `python test_delegated_access.py` or `source("Run
 Read only the columns you need with the `columns` parameter. This reduces memory and speeds up analysis.
 
 ```r
-# Option 1: columns parameter (OneLake only)
+# Option 1: columns parameter (OneLake)
 df <- read_table(conn, "fitbitdailydata",
                  columns = c("participantidentifier", "date", "steps"))
 
-# Option 2: SQL LIMIT (sp_vault)
+# Option 2: SQL LIMIT (Windows: sp_vault)
 df <- DBI::dbGetQuery(conn, "SELECT TOP 1000 * FROM fitbitdailydata")
 
-# Option 3: SQL WHERE filter
+# Option 3: SQL WHERE filter (Windows: sp_vault)
 df <- DBI::dbGetQuery(conn, "
   SELECT participantidentifier, date, steps
   FROM fitbitdailydata
@@ -350,11 +352,15 @@ Use the full dotted name: `read_table(conn, "dbo.aku_survey_responses_2026")`.
 az login
 ```
 
+### Mac: sp_vault auth prompts for browser login
+
+This is expected. On first connect, you'll authenticate to Key Vault via device code. The SP credentials are then used to access Fabric.
+
 ### GitHub install fails with a rate-limit message
 
 Wait and try again, or install with a GitHub personal access token.
 
-### ODBC Driver not found
+### ODBC Driver not found (Windows only)
 
 Install ODBC Driver 18 from https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server
 
