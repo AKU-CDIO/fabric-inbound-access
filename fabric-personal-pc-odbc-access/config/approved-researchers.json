@@ -1,0 +1,16 @@
+{
+  "keyVaultName": "uzima-fabric-tokens",
+  "secretName": "researcher-whitelist",
+  "emails": [
+    "derick.imbati@aku.edu",
+    "rais.muhammad@aku.edu",
+    "dorcasm@umich.edu",
+    "yechank@med.umich.edu",
+    "nannab@med.umich.edu"
+  ],
+  "notes": [
+    "This list is for admin approval tracking.",
+    "Do not give researchers direct Key Vault secret access.",
+    "ODBC users must still be granted access in the Fabric tenant/workspace."
+  ]
+}
