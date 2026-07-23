@@ -1,4 +1,4 @@
-from azure.identity import DefaultAzureCredential
+from azure.identity import ManagedIdentityCredential
 from azure.keyvault.secrets import SecretClient
 import pandas as pd
 import pyodbc
@@ -6,10 +6,11 @@ import pyodbc
 # Change only this value when you need another database.
 # Options: "uzima_db_backup", "HCW_fitbit_data", "Qualtrics"
 database_name = "uzima_db_backup"
+managed_identity_client_id = "4ae6ed7b-b72c-4853-9a3c-10699e60f63e"
 
 vault = SecretClient(
     vault_url="https://uzima-fabric-tokens.vault.azure.net/",
-    credential=DefaultAzureCredential(),
+    credential=ManagedIdentityCredential(client_id=managed_identity_client_id),
 )
 
 connection_string = vault.get_secret("fabric-odbc-connection-string").value

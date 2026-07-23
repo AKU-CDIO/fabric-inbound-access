@@ -76,7 +76,7 @@ Run one of these from the Azure-side runner or admin test environment:
 - `examples/python/fabric_odbc_researcher.py`
 - `examples/python/fabric_odbc_researcher.ipynb`
 
-The example reads the ODBC connection string from Key Vault, verifies that it uses managed identity auth, and then connects to Fabric.
+The example reads the ODBC connection string from Key Vault using the `cdiofabric` managed identity, verifies that the ODBC string uses managed identity auth, and then connects to Fabric.
 
 To switch datasets, change only the example's `database_name` value to one of:
 

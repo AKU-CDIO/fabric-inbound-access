@@ -22,7 +22,7 @@ Object ID: 8d88bbab-1c76-4bf0-b4f7-1cb49a001d9e
 4. ODBC uses `cdiofabric` to reach Fabric.
 5. Fabric returns only the tables/views that `cdiofabric` is allowed to read.
 
-Researchers should not receive Fabric tokens or raw Key Vault secrets. Their personal computer should use the AKU/CDIO approved access route. The Azure side of that route reads Key Vault and connects to Fabric.
+Researchers should not receive Fabric tokens or raw Key Vault secrets. Their personal computer should use the AKU/CDIO approved access route. The Azure side of that route reads Key Vault with the `cdiofabric` managed identity and connects to Fabric.
 
 ## Key Vault Values
 
@@ -46,7 +46,7 @@ DRIVER={ODBC Driver 18 for SQL Server};SERVER=fis5jjpzajqe5fxqs4z3vlsjde-zgopmz6
 
 Do not use browser/email sign-in auth. Researchers do not have Fabric access through their own email accounts.
 
-The `UID` is the `cdiofabric` Application ID/client ID.
+The `UID` is the `cdiofabric` Application ID/client ID. R should call `AzureKeyVault::key_vault(..., as_managed_identity = TRUE, token_args = list(client_id = "4ae6ed7b-b72c-4853-9a3c-10699e60f63e"))`; Python should use `ManagedIdentityCredential(client_id="4ae6ed7b-b72c-4853-9a3c-10699e60f63e")`.
 
 ## Changing The Database
 

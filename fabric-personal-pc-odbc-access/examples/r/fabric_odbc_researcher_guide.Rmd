@@ -9,6 +9,8 @@ This example reads the ODBC connection string from Key Vault.
 
 The connection string uses the `cdiofabric` managed identity to connect to Fabric. It must not use browser or email sign-in.
 
+Run this from an Azure resource that has the `cdiofabric` user-assigned managed identity attached.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = FALSE)
 ```
@@ -23,8 +25,14 @@ if (!requireNamespace("odbc", quietly = TRUE)) install.packages("odbc")
 # Change only this value when you need another database.
 # Options: "uzima_db_backup", "HCW_fitbit_data", "Qualtrics"
 database_name <- "uzima_db_backup"
+managed_identity_client_id <- "4ae6ed7b-b72c-4853-9a3c-10699e60f63e"
 
-vault <- AzureKeyVault::key_vault("https://uzima-fabric-tokens.vault.azure.net/")
+vault <- AzureKeyVault::key_vault(
+  "uzima-fabric-tokens",
+  as_managed_identity = TRUE,
+  token_args = list(client_id = managed_identity_client_id)
+)
+
 connection_string <- vault$secrets$get("fabric-odbc-connection-string")$value
 
 if (grepl("Interactive", connection_string, fixed = TRUE)) {
