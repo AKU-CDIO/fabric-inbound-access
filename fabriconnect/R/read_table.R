@@ -1,4 +1,23 @@
+#' Read a table from a Fabric Lakehouse
+#'
+#' Downloads all parquet files for a table and returns a data frame.
+#' Works with both OneLake (\code{fabric_connection}) and
+#' SQL (\code{DBIConnection}) connections.
+#'
+#' @param conn        A \code{fabric_connection} or \code{DBIConnection}.
+#' @param table_name  Character. The table name (dot-separated for OneLake).
+#' @param columns     Character vector of columns to select (OneLake only).
+#' @param overwrite   Logical. Overwrite temp files (OneLake only).
+#'
+#' @return A data frame with the table contents.
+#'
+#' @export
 read_table <- function(conn, table_name, columns = NULL, overwrite = TRUE) {
+  if (inherits(conn, "DBIConnection")) {
+    sql <- paste0("SELECT * FROM ", table_name)
+    return(DBI::dbGetQuery(conn, sql))
+  }
+
   token <- .get_fabric_token(conn$fabric_tenant, conn$access_token)
   ws_url <- sprintf("https://onelake.dfs.fabric.microsoft.com/%s", conn$workspace_id)
 

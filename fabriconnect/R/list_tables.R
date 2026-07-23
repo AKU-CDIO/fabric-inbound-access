@@ -2,9 +2,11 @@
 #'
 #' Returns the names of all user tables (excluding internal views
 #' prefixed with \code{_vw_}) in the connected Lakehouse.
+#' Works with both OneLake (\code{fabric_connection}) and
+#' SQL (\code{DBIConnection}) connections.
 #'
-#' @param conn A \code{fabric_connection} object created by
-#'   \code{\link{connect_to_fabric}}.
+#' @param conn A \code{fabric_connection} or \code{DBIConnection} object
+#'   created by \code{\link{connect_to_fabric}}.
 #'
 #' @return A character vector of table names.
 #'
@@ -12,9 +14,20 @@
 #' \dontrun{
 #' conn <- connect_to_fabric()
 #' list_tables(conn)
+#' conn <- connect_to_fabric(auth = "sp_vault")
+#' list_tables(conn)
 #' }
 #' @export
 list_tables <- function(conn) {
+  if (inherits(conn, "DBIConnection")) {
+    result <- DBI::dbGetQuery(conn,
+      "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES ORDER BY TABLE_NAME")
+    tabs <- result$TABLE_NAME[!grepl(
+      "^(_vw_|_mat_|dm_|sys|exec_|managed_|external_|sql_pool|frequently|long_running)",
+      result$TABLE_NAME, ignore.case = TRUE)]
+    return(tabs)
+  }
+
   token <- .get_fabric_token(conn$fabric_tenant, conn$access_token)
   url <- sprintf(
     "https://onelake.dfs.fabric.microsoft.com/%s/%s/Tables?recursive=true&maxResults=1000&resource=filesystem",
