@@ -113,8 +113,9 @@ connect_to_fabric <- function(
     "az"
   }
 
-  # Step 1: Get Key Vault token via az CLI
+  # Step 1: Get Key Vault token (az CLI or device code)
   get_kv_token <- function() {
+    # Try az CLI first
     r <- processx::run(az_cmd, c("account", "get-access-token",
                                   "--resource", "https://vault.azure.net",
                                   "--output", "json"),
@@ -125,7 +126,7 @@ connect_to_fabric <- function(
     # Fallback: device code for Key Vault
     kv_result <- .try_msal_device_code(.load_config()$fabric_tenant, "https://vault.azure.net")
     if (!is.null(kv_result)) return(kv_result$access_token)
-    stop("Failed to get Key Vault token. Run 'az login' first or use auth='device_code'.")
+    stop("Failed to get Key Vault token. Run 'az login' or use device code.")
   }
 
   kv_token <- get_kv_token()
@@ -138,25 +139,69 @@ connect_to_fabric <- function(
     httr::content(resp)$value
   }
 
+  tenant_id     <- fetch_secret("fabric-sp-tenant-id")
   client_id     <- fetch_secret("fabric-sp-client-id")
   client_secret <- fetch_secret("fabric-sp-client-secret")
 
-  # Step 3: ODBC connection
-  con <- DBI::dbConnect(
-    odbc::odbc(),
-    Driver                  = "ODBC Driver 18 for SQL Server",
-    Server                  = paste0(server, ",1433"),
-    Database                = database,
-    Authentication          = "ActiveDirectoryServicePrincipal",
-    UID                     = client_id,
-    pwd                     = client_secret,
-    Encrypt                 = "yes",
-    TrustServerCertificate  = "no",
-    Timeout                 = 30
-  )
+  # Step 3: Try ODBC first (Windows), fallback to REST API (Mac/Linux)
+  odbc_available <- requireNamespace("odbc", quietly = TRUE)
 
-  attr(con, "auth_type") <- "sp_vault"
-  con
+  if (odbc_available && .Platform$OS.type == "windows") {
+    # Windows: Use ODBC for full SQL access
+    tryCatch({
+      con <- DBI::dbConnect(
+        odbc::odbc(),
+        Driver                  = "ODBC Driver 18 for SQL Server",
+        Server                  = paste0(server, ",1433"),
+        Database                = database,
+        Authentication          = "ActiveDirectoryServicePrincipal",
+        UID                     = client_id,
+        pwd                     = client_secret,
+        Encrypt                 = "yes",
+        TrustServerCertificate  = "no",
+        Timeout                 = 30
+      )
+      attr(con, "auth_type") <- "sp_vault"
+      attr(con, "database") <- database
+      return(con)
+    }, error = function(e) {
+      message("ODBC connection failed, falling back to REST API: ", e$message)
+    })
+  }
+
+  # Mac/Linux: Use Fabric REST API with SP credentials
+  # Step 3a: Get Fabric token via OAuth2 client credentials
+  sp_token_url <- sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenant_id)
+  sp_resp <- httr::POST(sp_token_url,
+    body = list(
+      grant_type    = "client_credentials",
+      client_id     = client_id,
+      client_secret = client_secret,
+      scope         = "https://fabric.microsoft.com/.default"
+    ),
+    encode = "form"
+  )
+  httr::stop_for_status(sp_resp)
+  sp_data <- httr::content(sp_resp)
+  if (is.null(sp_data$access_token)) {
+    stop("Failed to get Fabric token from SP credentials.")
+  }
+
+  # Step 3b: Resolve database to workspace/lakehouse GUIDs
+  cfg <- .load_config()
+  workspace_id <- cfg$workspace_guid
+  lakehouse_id <- cfg$shortcuts[[database]]
+  if (is.null(lakehouse_id)) {
+    lakehouse_id <- cfg$lakehouse_guid
+  }
+
+  # Step 3c: Return fabric_connection with SP token
+  structure(
+    list(workspace_id = workspace_id, lakehouse_id = lakehouse_id,
+         fabric_tenant = tenant_id, access_token = sp_data$access_token),
+    class = "fabric_connection",
+    auth_type = "sp_vault_rest"
+  )
 }
 
 #' @noRd
