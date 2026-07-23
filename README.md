@@ -96,24 +96,159 @@ Researchers never need to authenticate. All steps happen automatically in the ba
 
 ## External Access (SP via Key Vault)
 
-For **external researchers** outside the approved VM, use `auth = "sp_vault"`:
+For **external researchers** outside the approved VM, use `auth = "sp_vault"`.
+
+### Prerequisites
+
+1. **Azure CLI** — install from https://aka.ms/installazurecli
+2. **Sign in** — run `az login` in terminal (interactive device code)
+3. **R packages** — `odbc`, `processx` (installed automatically)
+
+### Step 1: Connect
+
+```r
+library(fabriconnect)
+
+# Default database (uzima_db_backup)
+conn <- connect_to_fabric(auth = "sp_vault")
+
+# Or specify a different database
+conn <- connect_to_fabric(auth = "sp_vault", lakehouse_name = "HCW_fitbit_data")
+conn <- connect_to_fabric(auth = "sp_vault", database = "Qualtrics")
+```
+
+### Step 2: List Tables
+
+```r
+tables <- list_tables(conn)
+tables
+#  [1] "dimenrolledparticipants"    "factfitbitsleeplogs"
+#  [3] "dimsurveyresults"           "dimsurveydictionary"
+#  ...
+```
+
+### Step 3: Read Data
+
+```r
+# Full table (small tables only)
+df <- read_table(conn, "dimenrolledparticipants")
+head(df)
+
+# Large tables — use SQL LIMIT
+df <- DBI::dbGetQuery(conn, "SELECT TOP 100 * FROM fitbitdailydata")
+
+# Specific columns only
+df <- DBI::dbGetQuery(conn, "
+  SELECT participantidentifier, date, steps, calories
+  FROM fitbitdailydata
+")
+
+# Filtered
+df <- DBI::dbGetQuery(conn, "
+  SELECT * FROM dimenrolledparticipants
+  WHERE Gender = 'Female'
+")
+```
+
+### Step 4: SQL Queries
+
+```r
+# Count rows
+DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM dimenrolledparticipants")
+
+# Aggregation
+DBI::dbGetQuery(conn, "
+  SELECT Gender, COUNT(*) AS n
+  FROM dimenrolledparticipants
+  GROUP BY Gender
+")
+
+# Cross-database join (SP connection only)
+conn_hcw <- connect_to_fabric(auth = "sp_vault", lakehouse_name = "HCW_fitbit_data")
+df <- DBI::dbGetQuery(conn_hcw, "
+  SELECT p.ParticipantIdentifier, f.date, f.steps
+  FROM uzima_db_backup.dbo.dimenrolledparticipants p
+  JOIN HCW_fitbit_data.dbo.fitbitdailydata f
+    ON p.ParticipantIdentifier = f.participantidentifier
+")
+```
+
+### Step 5: Disconnect
+
+```r
+DBI::dbDisconnect(conn)
+```
+
+### Complete Examples
+
+**Example 1: Participant demographics**
 
 ```r
 library(fabriconnect)
 conn <- connect_to_fabric(auth = "sp_vault")
-list_tables(conn)
-df <- read_table(conn, "dimenrolledparticipants")
+
+df <- DBI::dbGetQuery(conn, "
+  SELECT ParticipantIdentifier, Gender, DateOfBirth, PostalCode
+  FROM dimenrolledparticipants
+  WHERE Gender IS NOT NULL
+")
+
+summary(df)
+table(df$Gender)
 ```
 
-This uses a Service Principal stored in Azure Key Vault. Requires:
-- `az login` (interactive device code)
-- ODBC Driver 18 for SQL Server
-- R packages: `odbc`, `processx`
-
-Works with full T-SQL (cross-database joins, `dbo.` schema, etc.):
+**Example 2: Fitbit sleep analysis**
 
 ```r
-query_tables(conn, "SELECT * FROM uzima_db_backup.dbo.dimenrolledparticipants")
+conn <- connect_to_fabric(auth = "sp_vault", lakehouse_name = "HCW_fitbit_data")
+
+sleep <- DBI::dbGetQuery(conn, "
+  SELECT participantidentifier, date, totalsleepminutes, efficiency
+  FROM fitbitsleeplogdetails
+  WHERE totalsleepminutes > 0
+")
+
+hist(sleep$totalsleepminutes, breaks = 30,
+     main = "Sleep Duration Distribution",
+     xlab = "Minutes")
+```
+
+**Example 3: Survey responses**
+
+```r
+conn <- connect_to_fabric(auth = "sp_vault", database = "Qualtrics")
+
+surveys <- DBI::dbGetQuery(conn, "
+  SELECT TOP 100 *
+  FROM dbo.aku_survey_responses_2026
+")
+
+names(surveys)
+```
+
+**Example 4: Join participants with Fitbit data**
+
+```r
+conn <- connect_to_fabric(auth = "sp_vault")
+
+# Get participant list
+participants <- DBI::dbGetQuery(conn, "
+  SELECT ParticipantIdentifier, Gender
+  FROM dimenrolledparticipants
+")
+
+# Get step counts
+steps <- DBI::dbGetQuery(conn, "
+  SELECT participantidentifier, SUM(steps) AS total_steps
+  FROM factfitbitdailydata
+  GROUP BY participantidentifier
+")
+
+# Merge
+df <- merge(participants, steps, by.x = "ParticipantIdentifier",
+            by.y = "participantidentifier", all.x = TRUE)
+
+head(df)
 ```
 
 ## Architecture
@@ -175,6 +310,8 @@ See [Runbooks/README.md](Runbooks/README.md) for deploying the token broker syst
 
 Expected. Fabric inbound access is restricted to the approved VM (`uzima`).
 
+Use `auth = "sp_vault"` for external access.
+
 ### I get "No authentication method available"
 
 Run the test script to verify: `python test_delegated_access.py` or `source("Runbooks/test-r-access.R")` in RStudio. If it fails, contact the admin to re-deploy the token broker.
@@ -183,13 +320,75 @@ Run the test script to verify: `python test_delegated_access.py` or `source("Run
 
 Read only the columns you need with the `columns` parameter. This reduces memory and speeds up analysis.
 
+```r
+# Option 1: columns parameter (OneLake only)
+df <- read_table(conn, "fitbitdailydata",
+                 columns = c("participantidentifier", "date", "steps"))
+
+# Option 2: SQL LIMIT (sp_vault)
+df <- DBI::dbGetQuery(conn, "SELECT TOP 1000 * FROM fitbitdailydata")
+
+# Option 3: SQL WHERE filter
+df <- DBI::dbGetQuery(conn, "
+  SELECT participantidentifier, date, steps
+  FROM fitbitdailydata
+  WHERE participantidentifier = 'P-AKU-11-22'
+")
+```
+
 ### list_tables shows a schema name (e.g. "dbo")
 
 Use the full dotted name: `read_table(conn, "dbo.aku_survey_responses_2026")`.
 
+### az login fails
+
+```bash
+# Windows — use full path
+"C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd" login
+
+# Or if az is in PATH
+az login
+```
+
 ### GitHub install fails with a rate-limit message
 
 Wait and try again, or install with a GitHub personal access token.
+
+### ODBC Driver not found
+
+Install ODBC Driver 18 from https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server
+
+## Table Reference
+
+### uzima_db_backup (default)
+
+| Table | Description |
+|---|---|
+| `dimenrolledparticipants` | Participant demographics (Gender, Age, PostalCode) |
+| `dimsurveyresults` | Survey responses |
+| `dimsurveydictionary` | Survey question definitions |
+| `factfitbitdailydata` | Daily Fitbit metrics (steps, calories, sleep) |
+| `factfitbitsleeplogs` | Sleep session logs |
+| `factfitbitactivitieslogs` | Activity logs |
+| `factfitbitrestingheartrates` | Resting heart rate readings |
+| `registeredparticipants` | Registration data |
+| `agents` | Research agent info |
+
+### HCW_fitbit_data
+
+| Table | Description |
+|---|---|
+| `fitbitdailydata` | Daily metrics (66 columns: steps, calories, HR, SpO2, HRV) |
+| `fitbitsleeplogdetails` | Detailed sleep sessions |
+| `fitbitactivitylogs` | Activity records |
+| `fitbitdevices` | Device metadata |
+| `fitbitprofiles` | User profiles |
+
+### Qualtrics
+
+| Table | Description |
+|---|---|
+| `dbo.aku_survey_responses_2026` | Full survey responses (256 columns) |
 
 ## Support
 
