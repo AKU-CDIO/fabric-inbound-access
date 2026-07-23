@@ -94,6 +94,28 @@ FabricLakehouse.cross_query(
 
 Researchers never need to authenticate. All steps happen automatically in the background.
 
+## External Access (SP via Key Vault)
+
+For **external researchers** outside the approved VM, use `auth = "sp_vault"`:
+
+```r
+library(fabriconnect)
+conn <- connect_to_fabric(auth = "sp_vault")
+list_tables(conn)
+df <- read_table(conn, "dimenrolledparticipants")
+```
+
+This uses a Service Principal stored in Azure Key Vault. Requires:
+- `az login` (interactive device code)
+- ODBC Driver 18 for SQL Server
+- R packages: `odbc`, `processx`
+
+Works with full T-SQL (cross-database joins, `dbo.` schema, etc.):
+
+```r
+query_tables(conn, "SELECT * FROM uzima_db_backup.dbo.dimenrolledparticipants")
+```
+
 ## Architecture
 
 ```

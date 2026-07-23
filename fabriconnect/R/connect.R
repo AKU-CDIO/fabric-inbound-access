@@ -22,9 +22,16 @@
 #' @param fabric_tenant  Character. The Fabric tenant ID.
 #' @param access_token   Character. An existing access token for OneLake
 #'   (\code{https://storage.azure.com}). When provided, no CLI is invoked.
+#' @param auth           Character. Authentication method: \code{"auto"} (default)
+#'   tries all methods in order, \code{"device_code"} forces interactive login,
+#'   \code{"sp_vault"} uses a Service Principal via Key Vault (returns DBI connection).
+#' @param database       Character. Database name for \code{auth = "sp_vault"}
+#'   (default: \code{"uzima_db_backup"}).
+#' @param vault_url      Character. Key Vault URL for \code{auth = "sp_vault"}.
+#' @param server         Character. Fabric SQL server for \code{auth = "sp_vault"}.
 #'
-#' @return An object of class \code{"fabric_connection"} containing the
-#'   workspace and lakehouse identifiers.
+#' @return An object of class \code{"fabric_connection"} (OneLake) or
+#'   \code{"DBIConnection"} (when \code{auth = "sp_vault"}).
 #'
 #' @examples
 #' \dontrun{
@@ -32,6 +39,8 @@
 #' conn <- connect_to_fabric(lakehouse_name = "HCW_fitbit_data")
 #' conn <- connect_to_fabric(lakehouse = "HCW_fitbit_data")      # same
 #' conn <- connect_to_fabric(access_token = Sys.getenv("FABRIC_ACCESS_TOKEN"))
+#' list_tables(conn)
+#' conn <- connect_to_fabric(auth = "sp_vault")
 #' list_tables(conn)
 #' }
 #' @export
@@ -41,8 +50,19 @@ connect_to_fabric <- function(
   lakehouse      = NULL,
   lakehouse_name = NULL,
   fabric_tenant  = NULL,
-  access_token   = NULL
+  access_token   = NULL,
+  auth           = c("auto", "device_code", "sp_vault"),
+  database       = "uzima_db_backup",
+  vault_url      = "https://uzima-secrets-xfmh.vault.azure.net",
+  server         = "fis5jjpzajqe5fxqs4z3vlsjde-zgopmz6jacoezkc3hd6da52lpm.datawarehouse.fabric.microsoft.com"
 ) {
+  auth <- match.arg(auth)
+
+  # sp_vault → ODBC SQL connection (not OneLake)
+  if (auth == "sp_vault") {
+    return(.connect_sp_vault(database = database, vault_url = vault_url, server = server))
+  }
+
   cfg <- .load_config()
   if (is.null(workspace_id))  workspace_id  <- cfg$workspace_guid
   if (is.null(fabric_tenant)) fabric_tenant <- cfg$fabric_tenant
@@ -78,6 +98,62 @@ connect_to_fabric <- function(
 
 .token_cache <- new.env(parent = emptyenv())
 .token_refresh_buffer_seconds <- 300
+
+#' @noRd
+.connect_sp_vault <- function(database, vault_url, server) {
+  # az CLI path (Windows)
+  az_cmd <- if (.Platform$OS.type == "windows" &&
+                file.exists("C:/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az.cmd")) {
+    "C:/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az.cmd"
+  } else {
+    "az"
+  }
+
+  # Step 1: Get Key Vault token via az CLI
+  get_kv_token <- function() {
+    r <- processx::run(az_cmd, c("account", "get-access-token",
+                                  "--resource", "https://vault.azure.net",
+                                  "--output", "json"),
+                       error_on_status = FALSE)
+    if (r$status == 0) {
+      return(jsonlite::fromJSON(r$stdout)$accessToken)
+    }
+    # Fallback: device code for Key Vault
+    kv_result <- .try_msal_device_code(.load_config()$fabric_tenant, "https://vault.azure.net")
+    if (!is.null(kv_result)) return(kv_result$access_token)
+    stop("Failed to get Key Vault token. Run 'az login' first or use auth='device_code'.")
+  }
+
+  kv_token <- get_kv_token()
+
+  # Step 2: Fetch SP credentials from Key Vault
+  fetch_secret <- function(name) {
+    url <- paste0(vault_url, "/secrets/", name, "?api-version=7.4")
+    resp <- httr::GET(url, httr::add_headers(Authorization = paste("Bearer", kv_token)))
+    httr::stop_for_status(resp)
+    httr::content(resp)$value
+  }
+
+  client_id     <- fetch_secret("fabric-sp-client-id")
+  client_secret <- fetch_secret("fabric-sp-client-secret")
+
+  # Step 3: ODBC connection
+  con <- DBI::dbConnect(
+    odbc::odbc(),
+    Driver                  = "ODBC Driver 18 for SQL Server",
+    Server                  = paste0(server, ",1433"),
+    Database                = database,
+    Authentication          = "ActiveDirectoryServicePrincipal",
+    UID                     = client_id,
+    pwd                     = client_secret,
+    Encrypt                 = "yes",
+    TrustServerCertificate  = "no",
+    Timeout                 = 30
+  )
+
+  attr(con, "auth_type") <- "sp_vault"
+  con
+}
 
 #' @noRd
 .normalize_access_token <- function(access_token, required = FALSE) {

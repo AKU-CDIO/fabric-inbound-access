@@ -7,7 +7,7 @@ Description: Provides functions to connect to Microsoft Fabric Lakehouses
     via the OneLake HTTPS API, bypassing the TDS/IP firewall bug.
     Uses Azure CLI or interactive device-code sign-in (email/MFA) for authentication and arrow for parquet reading.
 Depends: R (>= 4.0)
-Imports: arrow, utils, DBI, httr, jsonlite
+Imports: arrow, utils, DBI, httr, jsonlite, odbc, processx
 Suggests: duckdb, dplyr, callr, testthat
 License: MIT + file LICENSE
 Encoding: UTF-8
