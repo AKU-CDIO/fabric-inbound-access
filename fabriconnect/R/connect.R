@@ -60,8 +60,8 @@ connect_to_fabric <- function(
 
   # sp_vault → ODBC SQL connection (not OneLake)
   if (auth == "sp_vault") {
-    # Map lakehouse_name to database if provided
-    if (!is.null(lakehouse_name) && is.null(database)) {
+    # Map lakehouse_name to database if provided (overrides default)
+    if (!is.null(lakehouse_name)) {
       database <- lakehouse_name
     }
     return(.connect_sp_vault(database = database, vault_url = vault_url, server = server))
