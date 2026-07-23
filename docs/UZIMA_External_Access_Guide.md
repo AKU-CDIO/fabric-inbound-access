@@ -291,7 +291,7 @@ steps <- DBI::dbGetQuery(conn, "
 df <- merge(participants, steps,
             by.x = "ParticipantIdentifier",
             by.y = "participantidentifier",
-            all.x = TRUE")
+            all.x = TRUE)
 head(df)
 ```
 
@@ -305,7 +305,7 @@ steps_agg <- aggregate(steps ~ participantidentifier, data = steps, FUN = sum)
 df <- merge(participants, steps_agg,
             by.x = "ParticipantIdentifier",
             by.y = "participantidentifier",
-            all.x = TRUE")
+            all.x = TRUE)
 head(df)
 ```
 
