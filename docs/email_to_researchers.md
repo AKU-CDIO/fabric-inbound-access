@@ -14,12 +14,17 @@ We've added a new authentication method that lets you connect directly to Micros
 
 ## What You Need
 
-1. **Windows PC** (Windows 10 or later)
+1. **Windows or Mac** computer
 2. **R and RStudio** installed
-3. **Azure CLI** installed (free from Microsoft)
+3. **Azure CLI** installed (Windows only — free from Microsoft)
 4. Your AKU email address
 
+**Windows users:** Full SQL access with `auth = "sp_vault"`
+**Mac users:** Table access with `auth = "device_code"`
+
 ## Quick Setup (5 minutes)
+
+### Windows users
 
 1. Install Azure CLI: https://aka.ms/installazurecli
 2. Open Command Prompt and run: `az login`
@@ -32,6 +37,19 @@ remotes::install_github("AKU-CDIO/fabric-inbound-access",
 
 library(fabriconnect)
 conn <- connect_to_fabric(auth = "sp_vault")
+list_tables(conn)
+```
+
+### Mac users
+
+1. Open RStudio and run:
+
+```r
+remotes::install_github("AKU-CDIO/fabric-inbound-access",
+  subdir = "fabriconnect", force = TRUE)
+
+library(fabriconnect)
+conn <- connect_to_fabric()  # Opens browser for login
 list_tables(conn)
 ```
 
