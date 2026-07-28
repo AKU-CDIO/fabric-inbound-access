@@ -45,32 +45,48 @@ Secrets are never committed to this repository and are not written to the resear
 
 Install Microsoft ODBC Driver 18 for SQL Server. Python will authenticate to Key Vault interactively when you first connect: it tries browser login first, then prints a device-code prompt if browser login times out.
 
-Python:
+Use a dedicated virtual environment. Do not install into Anaconda `base` or another shared Python environment.
+
+Windows PowerShell:
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+.\.venv\Scripts\python.exe -c "from fabricpy import connect_to_fabric_sql; print('fabricpy SP SQL import OK')"
+```
+
+Mac Terminal:
 
 ```bash
-pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
+python3 -m venv .venv
+./.venv/bin/python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+./.venv/bin/python -c "from fabricpy import connect_to_fabric_sql; print('fabricpy SP SQL import OK')"
 ```
+
+Then connect:
 
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
 
 conn = connect_to_fabric_sql()
-print(list_sql_tables(conn))
+try:
+    print(list_sql_tables(conn))
 
-df = read_sql_table(
-    conn,
-    "dbo.dimenrolledparticipants",
-    columns=["ParticipantIdentifier", "Gender", "Age"],
-    top=10,
-)
-print(df)
+    df = read_sql_table(
+        conn,
+        "dbo.dimenrolledparticipants",
+        columns=["ParticipantIdentifier", "Gender", "Age"],
+        top=10,
+    )
+    print(df)
 
-summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
-print(summary)
-conn.close()
+    summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+    print(summary)
+finally:
+    conn.close()
 ```
 
-R:
+## R Users
 
 R currently uses Azure CLI to obtain the Key Vault token. Sign in before connecting:
 
@@ -78,13 +94,10 @@ R currently uses Azure CLI to obtain the Key Vault token. Sign in before connect
 az login --tenant 4fde8ff3-4dd5-42e1-a25a-e42905610d66
 ```
 
-
 ```r
 install.packages(c("DBI", "odbc", "httr", "jsonlite", "dplyr"))
 remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect", force = TRUE, upgrade_dependencies = FALSE)
-```
 
-```r
 library(fabriconnect)
 con <- connect_to_fabric_sql()
 list_tables(con)
@@ -122,3 +135,4 @@ The repository defaults are stored in `fabricpy/config.json` and `fabriconnect/i
 | Key Vault returns forbidden | Confirm the researcher has `Key Vault Secrets User` role on the vault |
 | ODBC driver error | Install Microsoft ODBC Driver 18 for SQL Server |
 | Fabric SQL login fails | Confirm the service principal has Fabric workspace/lakehouse SQL permissions |
+| pip dependency conflict warnings | Create a new `.venv` and install there; do not install into Anaconda `base` |

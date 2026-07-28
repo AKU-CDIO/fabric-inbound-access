@@ -1,93 +1,62 @@
-# fabricpy â€” Python package
+# fabricpy - Python package
 
-Read Delta tables from Microsoft Fabric Lakehouses via OneLake HTTPS. Works through restricted IP firewalls that block TDS (1433).
+Read Microsoft Fabric Lakehouse data and connect to Fabric SQL endpoints.
 
-## Azure login (device code)
+## Personal Laptop Install
 
-```bash
-az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
-```
+Use a dedicated virtual environment. Do not install into Anaconda `base` or another shared Python environment.
 
-## Install (one-liner)
+Mac/Linux:
 
 ```bash
-pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
+python3 -m venv .venv
+./.venv/bin/python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
 ```
 
-## API
+Windows PowerShell:
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `list_tables()` | `list[str]` | All user table names |
-| `read_table(name, columns=None)` | `pyarrow.Table` | Full table as Arrow table (with column pushdown) |
-| `to_pandas(name, columns=None)` | `pd.DataFrame` | Full table as pandas DataFrame |
-| `sql(query, table_columns=None)` | `pd.DataFrame` | Run SQL across tables via DuckDB |
-| `list_lakehouses()` (static) | `list[dict]` | Discover all Lakehouses in the workspace |
-
-## Usage
-
-```python
-from fabricpy import FabricLakehouse
-
-lh = FabricLakehouse()
-
-# Read all columns
-df = lh.to_pandas("dimenrolledparticipants")
-
-# Read only needed columns (predicate pushdown â€” less network)
-df = lh.to_pandas("factfitbitsleeplogs",
-                   columns=["ParticipantIdentifier", "MinutesAsleep"])
-
-# SQL with column pruning
-df = lh.sql("""
-    SELECT p.ParticipantIdentifier, count(*) AS n
-    FROM dimenrolledparticipants p
-    JOIN factfitbitsleeplogs s ON p.ParticipantIdentifier = s.ParticipantIdentifier
-    GROUP BY p.ParticipantIdentifier""",
-  table_columns={
-    "dimenrolledparticipants": ["ParticipantIdentifier"],
-    "factfitbitsleeplogs":     ["ParticipantIdentifier"]
-  })
-
-# Discover and connect by name
-lakes = FabricLakehouse.list_lakehouses()
-lh2 = FabricLakehouse(lakehouse="HCW_fitbit_data")
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
 ```
-
-## Configuration
-
-IDs are in `fabricpy/config.json` and loaded automatically. Override:
-
-```python
-lh = FabricLakehouse(
-    workspace_guid="your-workspace-guid",
-    lakehouse_guid="your-lakehouse-guid",
-    lakehouse="HCW_fitbit_data",
-    fabric_tenant="your-tenant-id"
-)
-```
-
-## Large tables
-
-- `deltalake` reads directly from OneLake (no disk download)
-- Use `columns=` for predicate pushdown â€” only requested bytes cross the network
-- No temp files, no accumulation
 
 ## Service Principal SQL Access
 
 Approved researchers can connect from personal laptops through Azure Key Vault. Python signs in interactively when `connect_to_fabric_sql()` is first called: browser login first, then a device-code prompt if the browser login times out.
 
-```bash
-pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
-```
-
 ```python
-from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table
+from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
 
 conn = connect_to_fabric_sql()
-print(list_sql_tables(conn))
-df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
-conn.close()
+try:
+    print(list_sql_tables(conn))
+    df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
+    print(df.head())
+    summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+    print(summary)
+finally:
+    conn.close()
 ```
 
 This follows the Azure AD + MFA -> Key Vault -> service principal -> Fabric SQL flow.
+
+## OneLake / FabricLakehouse Access
+
+The original `FabricLakehouse` API is still available for approved VM/OneLake workflows.
+
+```python
+from fabricpy import FabricLakehouse
+
+lh = FabricLakehouse()
+tables = lh.list_tables()
+df = lh.read_table("dimenrolledparticipants").to_pandas()
+```
+
+For OneLake reads, install the OneLake extras in a dedicated environment:
+
+```bash
+python3 -m venv .venv
+./.venv/bin/python -m pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+```
+
+On Windows PowerShell, use `.\.venv\Scripts\python.exe` instead of `./.venv/bin/python`.

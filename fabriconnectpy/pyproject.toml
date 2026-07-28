@@ -11,14 +11,12 @@ authors = [
 ]
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
-dependencies = [
-    "deltalake",
-]
+dependencies = []
 
 [project.optional-dependencies]
-pandas = ["pandas"]
-sql = ["duckdb"]
-sqlserver = ["pandas", "pyodbc", "azure-identity", "azure-keyvault-secrets"]
+pandas = ["deltalake", "pandas>=1.5,<3"]
+sql = ["deltalake", "duckdb", "pandas>=1.5,<3"]
+sqlserver = ["pandas>=1.5,<3", "pyodbc", "azure-identity", "azure-keyvault-secrets"]
 
 [tool.setuptools.package-data]
 fabricpy = ["config.json"]
