@@ -151,7 +151,7 @@ Researchers never need to authenticate. All steps happen automatically in the ba
 
 For **external researchers** outside the approved VM, use `auth = "sp_vault"`.
 
-**Works on Windows, Mac, and Linux.** On first connect, you'll be prompted to sign in via browser (device code) to access Key Vault.
+**Works on Windows, Mac, and Linux.** On first connect, Python uses one device-code prompt to access Key Vault. Browser login is opt-in only.
 
 ### Prerequisites
 
@@ -406,9 +406,9 @@ Use the full dotted name: `read_table(conn, "dbo.aku_survey_responses_2026")`.
 az login
 ```
 
-### Mac: sp_vault auth prompts for browser login
+### Mac: sp_vault auth prompts for device code
 
-This is expected. On first connect, you'll authenticate to Key Vault via device code. The SP credentials are then used to access Fabric.
+This is expected. On first connect, Python prints one device-code prompt for Key Vault. The SP credentials are then used to access Fabric. If you see browser login followed by device code, update the package and make sure FABRIC_KEYVAULT_AUTH_METHOD is not set to `auto`.
 
 ### GitHub install fails with a rate-limit message
 

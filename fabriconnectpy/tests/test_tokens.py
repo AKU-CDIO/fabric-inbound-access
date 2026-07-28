@@ -1,14 +1,21 @@
 import os
+import sys
+import types
 import unittest
 from unittest.mock import patch
 
 from fabricpy.client import (
     TOKEN_REFRESH_BUFFER_SECONDS,
     _build_sql_connection_string,
+    _get_keyvault_credential,
+    _get_service_principal_from_keyvault,
+    _KEYVAULT_CREDENTIAL_CACHE,
+    _SERVICE_PRINCIPAL_CACHE,
     _format_sql_table_name,
     _is_usable,
     _needs_refresh,
     _normalize_access_token,
+    _normalize_keyvault_auth_method,
     _pack_odbc_access_token,
     _now,
     _try_env_var_token,
@@ -46,6 +53,78 @@ class TokenAuthTests(unittest.TestCase):
         with patch.dict(os.environ, env, clear=True):
             self.assertEqual(_try_env_var_token(), token)
 
+    def test_keyvault_auth_method_defaults_to_device_code(self):
+        self.assertEqual(_normalize_keyvault_auth_method(), "device_code")
+        self.assertEqual(_normalize_keyvault_auth_method("device-code"), "device_code")
+        self.assertEqual(_normalize_keyvault_auth_method("browser"), "browser")
+        self.assertEqual(_normalize_keyvault_auth_method("auto"), "auto")
+        with self.assertRaisesRegex(ValueError, "keyvault_auth_method"):
+            _normalize_keyvault_auth_method("bad")
+
+    def test_default_keyvault_credential_does_not_create_browser_credential(self):
+        calls = []
+
+        class FakeDeviceCodeCredential:
+            def __init__(self, **kwargs):
+                calls.append(("device", kwargs))
+
+        class FakeInteractiveBrowserCredential:
+            def __init__(self, **kwargs):
+                calls.append(("browser", kwargs))
+
+        fake_identity = types.ModuleType("azure.identity")
+        fake_identity.DeviceCodeCredential = FakeDeviceCodeCredential
+        fake_identity.InteractiveBrowserCredential = FakeInteractiveBrowserCredential
+
+        _KEYVAULT_CREDENTIAL_CACHE.clear()
+        with patch.dict(sys.modules, {"azure.identity": fake_identity}):
+            cred = _get_keyvault_credential("tenant-1")
+
+        self.assertIsInstance(cred, FakeDeviceCodeCredential)
+        self.assertEqual([kind for kind, _ in calls], ["device"])
+
+    def test_service_principal_secret_lookup_is_cached(self):
+        class FakeCredential:
+            pass
+
+        class FakeSecret:
+            def __init__(self, value):
+                self.value = value
+
+        class FakeSecretClient:
+            calls = []
+
+            def __init__(self, vault_url, credential):
+                self.vault_url = vault_url
+                self.credential = credential
+
+            def get_secret(self, name):
+                FakeSecretClient.calls.append(name)
+                return FakeSecret(f"value-for-{name}")
+
+        fake_secrets = types.ModuleType("azure.keyvault.secrets")
+        fake_secrets.SecretClient = FakeSecretClient
+        sql_cfg = {
+            "vault_url": "https://vault.example",
+            "keyvault_tenant": "tenant-1",
+            "secret_names": {
+                "tenant_id": "tenant-secret",
+                "client_id": "client-secret",
+                "client_secret": "password-secret",
+            },
+        }
+
+        _SERVICE_PRINCIPAL_CACHE.clear()
+        with patch.dict(sys.modules, {"azure.keyvault.secrets": fake_secrets}):
+            with patch("fabricpy.client._get_keyvault_credential", return_value=FakeCredential()):
+                first = _get_service_principal_from_keyvault(sql_cfg)
+                second = _get_service_principal_from_keyvault(sql_cfg)
+
+        self.assertIs(first, second)
+        self.assertEqual(
+            FakeSecretClient.calls,
+            ["tenant-secret", "client-secret", "password-secret"],
+        )
 
     def test_packs_odbc_access_token_as_utf16_with_length_prefix(self):
         packed = _pack_odbc_access_token("abc")

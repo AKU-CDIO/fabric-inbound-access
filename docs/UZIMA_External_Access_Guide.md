@@ -82,10 +82,10 @@ finally:
 
 `connect_to_fabric_sql()` authenticates interactively to Key Vault.
 
-- It first tries browser login.
-- If browser login does not complete, it prints a device-code prompt.
+- By default it prints one device-code prompt.
 - Use the printed code at `https://login.microsoft.com/device`.
 - Complete MFA with the method enabled for your account.
+- Browser login is opt-in only: set `FABRIC_KEYVAULT_AUTH_METHOD=browser` or call `connect_to_fabric_sql(keyvault_auth_method="browser")`.
 
 Expected device-code prompt:
 
@@ -218,7 +218,7 @@ That is the older OneLake delegated-token path. For personal-laptop Key Vault + 
 
 ### Browser Login Does Not Open
 
-Wait for the device-code prompt, then use `https://login.microsoft.com/device`.
+Use the printed device-code prompt at `https://login.microsoft.com/device`. If you see both browser login and device code, update the package and ensure `FABRIC_KEYVAULT_AUTH_METHOD` is not set to `auto`.
 
 ### Microsoft Authenticator Shows No Code
 

@@ -29,6 +29,8 @@ FABRIC_SQL_SCOPE = "https://database.windows.net/.default"
 SQL_ACCESS_TOKEN_ATTR = 1256
 
 _TOKEN_CACHE = {}
+_KEYVAULT_CREDENTIAL_CACHE = {}
+_SERVICE_PRINCIPAL_CACHE = {}
 TOKEN_REFRESH_BUFFER_SECONDS = 300
 _TOKEN_DIR = os.path.join(os.environ.get("PROGRAMDATA", ""), "UZIMA", "FabricTokenBroker")
 _VM_HOST = "uzima"
@@ -358,7 +360,45 @@ def _require_sql_config(sql_cfg):
         )
 
 
-def _get_keyvault_credential(keyvault_tenant):
+def _normalize_keyvault_auth_method(auth_method=None):
+    value = (
+        auth_method
+        or os.environ.get("FABRIC_KEYVAULT_AUTH_METHOD")
+        or "device_code"
+    )
+    value = str(value).strip().lower().replace("-", "_")
+    aliases = {
+        "device": "device_code",
+        "devicecode": "device_code",
+        "device_code": "device_code",
+        "browser": "browser",
+        "interactive_browser": "browser",
+        "auto": "auto",
+    }
+    if value not in aliases:
+        raise ValueError(
+            "keyvault_auth_method must be 'device_code', 'browser', or 'auto'."
+        )
+    return aliases[value]
+
+
+def _print_device_code(*args, **kwargs):
+    if len(args) == 1 and hasattr(args[0], "verification_uri"):
+        verification_uri = args[0].verification_uri
+        user_code = args[0].user_code
+    else:
+        verification_uri = kwargs.get("verification_uri") or (
+            args[0] if len(args) > 0 else "https://login.microsoft.com/device"
+        )
+        user_code = kwargs.get("user_code") or (
+            args[1] if len(args) > 1 else "<code not supplied>"
+        )
+    print("\nSIGN IN REQUIRED", flush=True)
+    print(f"Open: {verification_uri}", flush=True)
+    print(f"Code: {user_code}\n", flush=True)
+
+
+def _get_keyvault_credential(keyvault_tenant, auth_method=None):
     try:
         from azure.identity import DeviceCodeCredential, InteractiveBrowserCredential
     except ImportError as exc:
@@ -367,44 +407,48 @@ def _get_keyvault_credential(keyvault_tenant):
             "Install with: pip install azure-identity"
         ) from exc
 
+    method = _normalize_keyvault_auth_method(auth_method)
+    cache_key = (keyvault_tenant, method)
+    cached = _KEYVAULT_CREDENTIAL_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if method == "device_code":
+        credential = DeviceCodeCredential(
+            tenant_id=keyvault_tenant,
+            prompt_callback=_print_device_code,
+        )
+        _KEYVAULT_CREDENTIAL_CACHE[cache_key] = credential
+        return credential
+
     browser_credential = InteractiveBrowserCredential(
         tenant_id=keyvault_tenant,
-        timeout=180,
+        timeout=60,
     )
+    if method == "browser":
+        _KEYVAULT_CREDENTIAL_CACHE[cache_key] = browser_credential
+        return browser_credential
+
     try:
         browser_credential.get_token("https://vault.azure.net/.default")
+        _KEYVAULT_CREDENTIAL_CACHE[cache_key] = browser_credential
         return browser_credential
     except Exception as exc:
         print(
-            "Browser login did not complete; falling back to device-code login. "
+            "Browser login did not complete; using device-code login. "
             f"Reason: {type(exc).__name__}: {exc}",
             flush=True,
         )
 
-    def print_device_code(*args, **kwargs):
-        if len(args) == 1 and hasattr(args[0], "verification_uri"):
-            verification_uri = args[0].verification_uri
-            user_code = args[0].user_code
-        else:
-            verification_uri = kwargs.get("verification_uri") or (
-                args[0] if len(args) > 0 else "https://login.microsoft.com/device"
-            )
-            user_code = kwargs.get("user_code") or (
-                args[1] if len(args) > 1 else "<code not supplied>"
-            )
-        print("\nSIGN IN REQUIRED", flush=True)
-        print(f"Open: {verification_uri}", flush=True)
-        print(f"Code: {user_code}\n", flush=True)
-
-    device_credential = DeviceCodeCredential(
+    credential = DeviceCodeCredential(
         tenant_id=keyvault_tenant,
-        prompt_callback=print_device_code,
+        prompt_callback=_print_device_code,
     )
-    device_credential.get_token("https://vault.azure.net/.default")
-    return device_credential
+    _KEYVAULT_CREDENTIAL_CACHE[cache_key] = credential
+    return credential
 
 
-def _get_service_principal_from_keyvault(sql_cfg):
+def _get_service_principal_from_keyvault(sql_cfg, auth_method=None):
     try:
         from azure.keyvault.secrets import SecretClient
     except ImportError as exc:
@@ -413,14 +457,27 @@ def _get_service_principal_from_keyvault(sql_cfg):
             "Install with: pip install azure-keyvault-secrets"
         ) from exc
 
-    credential = _get_keyvault_credential(sql_cfg["keyvault_tenant"])
-    client = SecretClient(vault_url=sql_cfg["vault_url"], credential=credential)
+    credential = _get_keyvault_credential(sql_cfg["keyvault_tenant"], auth_method)
     names = sql_cfg["secret_names"]
-    return {
+    cache_key = (
+        sql_cfg["vault_url"],
+        sql_cfg["keyvault_tenant"],
+        names["tenant_id"],
+        names["client_id"],
+        names["client_secret"],
+    )
+    cached = _SERVICE_PRINCIPAL_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    client = SecretClient(vault_url=sql_cfg["vault_url"], credential=credential)
+    sp = {
         "tenant_id": client.get_secret(names["tenant_id"]).value,
         "client_id": client.get_secret(names["client_id"]).value,
         "client_secret": client.get_secret(names["client_secret"]).value,
     }
+    _SERVICE_PRINCIPAL_CACHE[cache_key] = sp
+    return sp
 
 
 def _get_fabric_sql_token(sp):
@@ -471,7 +528,7 @@ def _format_sql_table_name(table_name):
 
 def connect_to_fabric_sql(database=None, server=None, vault_url=None,
                           keyvault_tenant=None, odbc_driver="ODBC Driver 18 for SQL Server",
-                          timeout=30):
+                          timeout=30, keyvault_auth_method=None):
     """Connect to Fabric SQL using SP credentials stored in Azure Key Vault.
 
     Researchers authenticate interactively to the Key Vault tenant. The service
@@ -488,7 +545,7 @@ def connect_to_fabric_sql(database=None, server=None, vault_url=None,
 
     sql_cfg = _get_sql_access_config(database, server, vault_url, keyvault_tenant)
     _require_sql_config(sql_cfg)
-    sp = _get_service_principal_from_keyvault(sql_cfg)
+    sp = _get_service_principal_from_keyvault(sql_cfg, keyvault_auth_method)
     token = _get_fabric_sql_token(sp)
     conn_str = _build_sql_connection_string(
         sql_cfg["server"], sql_cfg["database"], odbc_driver

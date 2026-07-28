@@ -43,7 +43,7 @@ Secrets are never committed to this repository and are not written to the resear
 
 ## Researcher Setup
 
-Install Microsoft ODBC Driver 18 for SQL Server. Python will authenticate to Key Vault interactively when you first connect: it tries browser login first, then prints a device-code prompt if browser login times out.
+Install Microsoft ODBC Driver 18 for SQL Server. Python will authenticate to Key Vault interactively when you first connect. By default it prints one device-code prompt; it does not try browser login first, which avoids the slow double-auth experience.
 
 Use a dedicated virtual environment. Do not install into Anaconda `base` or another shared Python environment.
 
@@ -125,12 +125,13 @@ The repository defaults are stored in `fabricpy/config.json` and `fabriconnect/i
 | `FABRIC_KEYVAULT_TENANT` | Tenant used for Key Vault login |
 | `FABRIC_SQL_SERVER` | Fabric SQL endpoint host |
 | `FABRIC_SQL_DATABASE` | Fabric SQL database |
+| `FABRIC_KEYVAULT_AUTH_METHOD` | Optional Python auth method: `device_code` (default), `browser`, or `auto` |
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| Browser login times out | Use the printed device-code prompt at `https://login.microsoft.com/device` |
+| Sign-in feels slow or repeats | Update the package and use the default device-code flow. Do not call `connect_to_fabric_sql()` more than once per script. |
 | Key Vault login fails | Confirm the researcher is a guest/user in tenant `4fde8ff3-4dd5-42e1-a25a-e42905610d66`, can complete MFA, and has Key Vault RBAC |
 | Key Vault returns forbidden | Confirm the researcher has `Key Vault Secrets User` role on the vault |
 | ODBC driver error | Install Microsoft ODBC Driver 18 for SQL Server |
