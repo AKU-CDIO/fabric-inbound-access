@@ -18,26 +18,26 @@ print("UZIMA researcher Fabric SQL example starting...", flush=True)
 print("Authenticating once and opening one SQL connection...", flush=True)
 
 conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
-try:
-    tables = list_sql_tables(conn)
-    print(f"Found {len(tables)} tables:")
-    for table in tables[:10]:
-        print(f"  - {table}")
-    if len(tables) > 10:
-        print(f"  ... and {len(tables) - 10} more")
 
-    print("\nTop participants:")
-    participants = read_sql_table(
-        conn,
-        "dbo.dimenrolledparticipants",
-        columns=["ParticipantIdentifier", "Gender", "Age"],
-        top=10,
-    )
-    print(participants.head())
+tables = list_sql_tables(conn)
+print(f"Found {len(tables)} tables:")
+for table in tables[:10]:
+    print(f"  - {table}")
+if len(tables) > 10:
+    print(f"  ... and {len(tables) - 10} more")
 
-    print("\nParticipant count:")
-    summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
-    print(summary)
-finally:
-    conn.close()
-    print("Connection closed.", flush=True)
+print("\nTop participants:")
+participants = read_sql_table(
+    conn,
+    "dbo.dimenrolledparticipants",
+    columns=["ParticipantIdentifier", "Gender", "Age"],
+    top=10,
+)
+print(participants.head())
+
+print("\nParticipant count:")
+summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+print(summary)
+
+conn.close()
+print("Connection closed.", flush=True)

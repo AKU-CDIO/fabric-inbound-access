@@ -108,17 +108,17 @@ Python usage: authenticate once, reuse the same `conn` for all reads/queries, an
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
 
 conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
-try:
-    tables = list_sql_tables(conn)
-    print(tables[:10])
 
-    df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
-    print(df.head())
+tables = list_sql_tables(conn)
+print(tables[:10])
 
-    summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
-    print(summary)
-finally:
-    conn.close()
+df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
+print(df.head())
+
+summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+print(summary)
+
+conn.close()
 ```
 
 R usage follows the same pattern: connect once, run all reads/queries, then disconnect once.
@@ -126,13 +126,10 @@ R usage follows the same pattern: connect once, run all reads/queries, then disc
 ```r
 library(fabriconnect)
 con <- connect_to_fabric_sql()
-tryCatch({
-  list_tables(con)
-  read_table(con, "dbo.dimenrolledparticipants")
-  query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
-}, finally = {
-  DBI::dbDisconnect(con)
-})
+list_tables(con)
+read_table(con, "dbo.dimenrolledparticipants")
+query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+DBI::dbDisconnect(con)
 ```
 
 See [docs/FABRIC_SP_ACCESS_SETUP.md](docs/FABRIC_SP_ACCESS_SETUP.md) for setup, admin RBAC, and troubleshooting.

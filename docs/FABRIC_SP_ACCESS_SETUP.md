@@ -63,27 +63,27 @@ python3 -m venv .venv
 ./.venv/bin/python -c "from fabricpy import connect_to_fabric_sql; print('fabricpy SP SQL import OK')"
 ```
 
-Then connect. Call `connect_to_fabric_sql()` once, run all reads/queries with that same `conn`, then close it once in `finally`. Do not reconnect for each query, because that can trigger repeated browser/device-code authentication:
+Then connect. Call `connect_to_fabric_sql()` once, run all reads/queries with that same `conn`, then close it with `conn.close()`. Do not reconnect for each query, because that can trigger repeated authentication:
 
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
 
 conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
-try:
-    print(list_sql_tables(conn))
 
-    df = read_sql_table(
-        conn,
-        "dbo.dimenrolledparticipants",
-        columns=["ParticipantIdentifier", "Gender", "Age"],
-        top=10,
-    )
-    print(df)
+print(list_sql_tables(conn))
 
-    summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
-    print(summary)
-finally:
-    conn.close()
+df = read_sql_table(
+    conn,
+    "dbo.dimenrolledparticipants",
+    columns=["ParticipantIdentifier", "Gender", "Age"],
+    top=10,
+)
+print(df)
+
+summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+print(summary)
+
+conn.close()
 ```
 
 ## R Users

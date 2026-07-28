@@ -35,7 +35,6 @@ Use a dedicated virtual environment. Do not install this into Anaconda `base` or
 ```powershell
 py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
-.\.venv\Scripts\python.exe docs\test.py
 ```
 
 If `py` is not available, use `python` instead:
@@ -43,7 +42,6 @@ If `py` is not available, use `python` instead:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
-.\.venv\Scripts\python.exe docs\test.py
 ```
 
 ### Mac Terminal
@@ -51,31 +49,29 @@ python -m venv .venv
 ```bash
 python3 -m venv .venv
 ./.venv/bin/python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
-./.venv/bin/python docs/test.py
 ```
 
 This installs the Fabric package plus the SQL/Key Vault dependencies inside `.venv`: `pandas`, `pyodbc`, `azure-identity`, and `azure-keyvault-secrets`.
 
 ## Connect to Fabric SQL
 
-Authenticate once by calling `connect_to_fabric_sql()`. Keep that same `conn` open while you list tables, read tables, and run SQL. Close it once in `finally`. Do not call `connect_to_fabric_sql()` again for each query, because that can trigger repeated browser/device-code authentication.
+Authenticate once by calling `connect_to_fabric_sql()`. Keep that same `conn` open while you list tables, read tables, and run SQL. Close it with `conn.close()` when finished. Do not call `connect_to_fabric_sql()` again for each query, because that can trigger repeated authentication.
 
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
 
 conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
 
-try:
-    tables = list_sql_tables(conn)
-    print(tables)
+tables = list_sql_tables(conn)
+print(tables)
 
-    df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
-    print(df.head())
+df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
+print(df.head())
 
-    summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
-    print(summary)
-finally:
-    conn.close()
+summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+print(summary)
+
+conn.close()
 ```
 
 ## Authentication Behavior
@@ -103,7 +99,7 @@ Tenant used for Key Vault login:
 
 ## Common Queries
 
-Run these examples while the same `conn` from the previous section is still open. If you already ran `conn.close()`, create a new connection once, run all needed queries, then close it again.
+Run these examples while the same `conn` from the previous section is still open. When finished, run `conn.close()`.
 
 ### List Tables
 
@@ -174,26 +170,22 @@ Then use:
 library(fabriconnect)
 
 con <- connect_to_fabric_sql()
-tryCatch({
-  list_tables(con)
-  df <- read_table(con, "dbo.dimenrolledparticipants")
-}, finally = {
-  DBI::dbDisconnect(con)
-})
+list_tables(con)
+df <- read_table(con, "dbo.dimenrolledparticipants")
+DBI::dbDisconnect(con)
 ```
 
 ## Troubleshooting
 
 ### ImportError: cannot import name `connect_to_fabric_sql`
 
-You are using an old installed copy of `fabricpy`. Create a clean `.venv`, install from GitHub there, and run the test with that `.venv` Python:
+You are using an old installed copy of `fabricpy`. Create a clean `.venv`, install from GitHub there, and verify the import with that `.venv` Python:
 
 Windows:
 
 ```powershell
 py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
-.\.venv\Scripts\python.exe docs\test.py
 ```
 
 Mac:
@@ -201,10 +193,9 @@ Mac:
 ```bash
 python3 -m venv .venv
 ./.venv/bin/python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
-./.venv/bin/python docs/test.py
 ```
 
-Then verify:
+Verify:
 
 ```python
 import fabricpy

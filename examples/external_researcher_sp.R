@@ -6,25 +6,23 @@
 #   3. Install Microsoft ODBC Driver 18 for SQL Server
 #
 # This example authenticates once, opens one Fabric SQL connection, reuses it,
-# then disconnects once in finally.
+# then disconnects once at the end.
 
 library(fabriconnect)
 
 con <- connect_to_fabric_sql()
-tryCatch({
-  cat("Connected via Key Vault service-principal access.\n\n")
+cat("Connected via Key Vault service-principal access.\n\n")
 
-  print(head(list_tables(con), 10))
+print(head(list_tables(con), 10))
 
-  participants <- read_table(
-    con,
-    "dbo.dimenrolledparticipants",
-    columns = c("ParticipantIdentifier", "Gender", "Age")
-  )
-  print(head(participants, 10))
+participants <- read_table(
+  con,
+  "dbo.dimenrolledparticipants",
+  columns = c("ParticipantIdentifier", "Gender", "Age")
+)
+print(head(participants, 10))
 
-  print(query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants"))
-}, finally = {
-  DBI::dbDisconnect(con)
-  cat("Connection closed.\n")
-})
+print(query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants"))
+
+DBI::dbDisconnect(con)
+cat("Connection closed.\n")
