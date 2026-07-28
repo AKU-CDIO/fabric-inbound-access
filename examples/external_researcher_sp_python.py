@@ -11,7 +11,7 @@ Prerequisites:
 
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
 try:
     print("Connected via Key Vault service-principal access.\n")
 

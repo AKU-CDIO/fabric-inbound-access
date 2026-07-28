@@ -68,7 +68,7 @@ Then connect. Call `connect_to_fabric_sql()` once, run all reads/queries with th
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
 try:
     print(list_sql_tables(conn))
 
@@ -125,7 +125,6 @@ The repository defaults are stored in `fabricpy/config.json` and `fabriconnect/i
 | `FABRIC_KEYVAULT_TENANT` | Tenant used for Key Vault login |
 | `FABRIC_SQL_SERVER` | Fabric SQL endpoint host |
 | `FABRIC_SQL_DATABASE` | Fabric SQL database |
-| `FABRIC_KEYVAULT_AUTH_METHOD` | Optional Python auth method: `device_code` (default), `browser`, or `auto` |
 
 ## Troubleshooting
 

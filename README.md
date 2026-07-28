@@ -107,7 +107,7 @@ Python usage: authenticate once, reuse the same `conn` for all reads/queries, an
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
 try:
     tables = list_sql_tables(conn)
     print(tables[:10])
@@ -408,7 +408,7 @@ az login
 
 ### Mac: sp_vault auth prompts for device code
 
-This is expected. On first connect, Python prints one device-code prompt for Key Vault. The SP credentials are then used to access Fabric. If you see browser login followed by device code, update the package and make sure FABRIC_KEYVAULT_AUTH_METHOD is not set to `auto`.
+This is expected. On first connect, Python prints one device-code prompt for Key Vault. The SP credentials are then used to access Fabric. If you see browser login followed by device code, update the package and call `connect_to_fabric_sql(keyvault_auth_method="device_code")`.
 
 ### GitHub install fails with a rate-limit message
 

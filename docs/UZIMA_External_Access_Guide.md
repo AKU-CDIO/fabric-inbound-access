@@ -63,7 +63,7 @@ Authenticate once by calling `connect_to_fabric_sql()`. Keep that same `conn` op
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
 
 try:
     tables = list_sql_tables(conn)
@@ -85,7 +85,7 @@ finally:
 - By default it prints one device-code prompt.
 - Use the printed code at `https://login.microsoft.com/device`.
 - Complete MFA with the method enabled for your account.
-- Browser login is opt-in only: set `FABRIC_KEYVAULT_AUTH_METHOD=browser` or call `connect_to_fabric_sql(keyvault_auth_method="browser")`.
+- Browser login is opt-in only by calling `connect_to_fabric_sql(keyvault_auth_method="browser")`.
 
 Expected device-code prompt:
 
@@ -218,7 +218,7 @@ That is the older OneLake delegated-token path. For personal-laptop Key Vault + 
 
 ### Browser Login Does Not Open
 
-Use the printed device-code prompt at `https://login.microsoft.com/device`. If you see both browser login and device code, update the package and ensure `FABRIC_KEYVAULT_AUTH_METHOD` is not set to `auto`.
+Use the printed device-code prompt at `https://login.microsoft.com/device`. If you see both browser login and device code, update the package and call `connect_to_fabric_sql(keyvault_auth_method="device_code")`.
 
 ### Microsoft Authenticator Shows No Code
 

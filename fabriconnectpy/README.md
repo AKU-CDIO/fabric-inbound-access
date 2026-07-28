@@ -27,7 +27,7 @@ Approved researchers can connect from personal laptops through Azure Key Vault. 
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
 try:
     print(list_sql_tables(conn))
     df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)

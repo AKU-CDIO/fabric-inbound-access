@@ -54,7 +54,8 @@ class TokenAuthTests(unittest.TestCase):
             self.assertEqual(_try_env_var_token(), token)
 
     def test_keyvault_auth_method_defaults_to_device_code(self):
-        self.assertEqual(_normalize_keyvault_auth_method(), "device_code")
+        with patch.dict(os.environ, {"FABRIC_KEYVAULT_AUTH_METHOD": "browser"}):
+            self.assertEqual(_normalize_keyvault_auth_method(), "device_code")
         self.assertEqual(_normalize_keyvault_auth_method("device-code"), "device_code")
         self.assertEqual(_normalize_keyvault_auth_method("browser"), "browser")
         self.assertEqual(_normalize_keyvault_auth_method("auto"), "auto")
