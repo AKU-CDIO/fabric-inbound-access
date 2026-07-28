@@ -43,24 +43,22 @@ Secrets are never committed to this repository and are not written to the resear
 
 ## Researcher Setup
 
-Install Microsoft ODBC Driver 18 for SQL Server. Python will authenticate to Key Vault interactively when you first connect. By default it prints one device-code prompt; it does not try browser login first, which avoids the slow double-auth experience.
+Install Microsoft ODBC Driver 18 for SQL Server. Python will authenticate to Key Vault interactively when you first connect. By default it opens a browser for Key Vault login.
 
-Use a dedicated virtual environment. Do not install into Anaconda `base` or another shared Python environment.
+Install or update the Fabric package directly with pip into your Python user site; no virtual environment is required.
 
 Windows PowerShell:
 
 ```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
-.\.venv\Scripts\python.exe -c "from fabricpy import connect_to_fabric_sql; print('fabricpy SP SQL import OK')"
+py -3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
+py -3 -c "from fabricpy import connect_to_fabric_sql; print('fabricpy SP SQL import OK')"
 ```
 
 Mac Terminal:
 
 ```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
-./.venv/bin/python -c "from fabricpy import connect_to_fabric_sql; print('fabricpy SP SQL import OK')"
+python3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
+python3 -c "from fabricpy import connect_to_fabric_sql; print('fabricpy SP SQL import OK')"
 ```
 
 Then connect. Call `connect_to_fabric_sql()` once, run all reads/queries with that same `conn`, then close it with `conn.close()`. Do not reconnect for each query, because that can trigger repeated authentication:
@@ -68,7 +66,7 @@ Then connect. Call `connect_to_fabric_sql()` once, run all reads/queries with th
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
 
-conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
+conn = connect_to_fabric_sql()
 
 print(list_sql_tables(conn))
 
@@ -130,9 +128,9 @@ The repository defaults are stored in `fabricpy/config.json` and `fabriconnect/i
 
 | Problem | Fix |
 |---|---|
-| Sign-in feels slow or repeats | Update the package and use the default device-code flow. Do not call `connect_to_fabric_sql()` more than once per script. |
+| Sign-in feels slow or repeats | Update the package and use the default browser flow. Do not call `connect_to_fabric_sql()` more than once per script. |
 | Key Vault login fails | Confirm the researcher is a guest/user in tenant `4fde8ff3-4dd5-42e1-a25a-e42905610d66`, can complete MFA, and has Key Vault RBAC |
 | Key Vault returns forbidden | Confirm the researcher has `Key Vault Secrets User` role on the vault |
 | ODBC driver error | Install Microsoft ODBC Driver 18 for SQL Server |
 | Fabric SQL login fails | Confirm the service principal has Fabric workspace/lakehouse SQL permissions |
-| pip dependency conflict warnings | Create a new `.venv` and install there; do not install into Anaconda `base` |
+| pip dependency conflict warnings | Update pip, then reinstall with `--upgrade --no-cache-dir` |

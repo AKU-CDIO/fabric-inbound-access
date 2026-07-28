@@ -7,9 +7,8 @@ reads/queries, then closes it once.
 
 Prerequisites:
   1. Your account has Key Vault Secrets User access on uzima-secrets-xfmh
-  2. Create a dedicated .venv; do not install into Anaconda base
-  3. Install: python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
-  4. Install Microsoft ODBC Driver 18 for SQL Server
+  2. Install: python -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
+  3. Install Microsoft ODBC Driver 18 for SQL Server
 """
 
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
@@ -17,7 +16,7 @@ from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql
 print("UZIMA researcher Fabric SQL example starting...", flush=True)
 print("Authenticating once and opening one SQL connection...", flush=True)
 
-conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
+conn = connect_to_fabric_sql()
 
 tables = list_sql_tables(conn)
 print(f"Found {len(tables)} tables:")

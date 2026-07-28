@@ -86,20 +86,18 @@ FabricLakehouse.cross_query(
 
 ## Service Principal Access via Key Vault
 
-For approved researchers on personal laptops, use the Key Vault service-principal SQL flow. Install Python into a dedicated `.venv`; do not install into Anaconda `base` or another shared environment.
+For approved researchers on personal laptops, use the Key Vault service-principal SQL flow. Install the Python package directly with pip into your Python user site; no virtual environment is required.
 
 Windows PowerShell install:
 
 ```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+py -3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
 ```
 
 macOS/Linux install:
 
 ```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+python3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
 ```
 
 Python usage: authenticate once, reuse the same `conn` for all reads/queries, and close it once at the end.
@@ -107,7 +105,7 @@ Python usage: authenticate once, reuse the same `conn` for all reads/queries, an
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
 
-conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
+conn = connect_to_fabric_sql()
 
 tables = list_sql_tables(conn)
 print(tables[:10])
@@ -148,7 +146,7 @@ Researchers never need to authenticate. All steps happen automatically in the ba
 
 For **external researchers** outside the approved VM, use `auth = "sp_vault"`.
 
-**Works on Windows, Mac, and Linux.** On first connect, Python uses one device-code prompt to access Key Vault. Browser login is opt-in only.
+**Works on Windows, Mac, and Linux.** On first connect, Python opens the default browser for Key Vault login. Device-code login is only a fallback when browser login is not possible.
 
 ### Prerequisites
 
@@ -342,11 +340,10 @@ remotes::install_github(
 ### Python
 
 ```bash
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+py -3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
 ```
 
-> **Note:** For personal laptops, install Python into a dedicated `.venv`; do not install into Anaconda `base`. On the approved VM, both packages are pre-installed and pre-configured.
+> **Note:** On the approved VM, both packages are pre-installed and pre-configured.
 
 ## For Administrators
 
@@ -403,9 +400,9 @@ Use the full dotted name: `read_table(conn, "dbo.aku_survey_responses_2026")`.
 az login
 ```
 
-### Mac: sp_vault auth prompts for device code
+### Mac: sp_vault auth opens browser
 
-This is expected. On first connect, Python prints one device-code prompt for Key Vault. The SP credentials are then used to access Fabric. If you see browser login followed by device code, update the package and call `connect_to_fabric_sql(keyvault_auth_method="device_code")`.
+This is expected. On first connect, Python opens a browser for Key Vault login. The SP credentials are then used to access Fabric.
 
 ### GitHub install fails with a rate-limit message
 

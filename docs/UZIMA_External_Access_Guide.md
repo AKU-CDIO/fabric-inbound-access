@@ -21,37 +21,34 @@ No service-principal secret should be saved in notebooks, scripts, or local file
 
 - Windows or Mac computer
 - Internet connection
-- Python 3.10+ with a dedicated `.venv`; do not install into Anaconda `base`
+- Python 3.10+
 - Microsoft ODBC Driver 18 for SQL Server
 - For Mac: `unixODBC` is also required
 - An approved account added to the AKU tenant and granted Key Vault access
 
 ## Install Python Package
 
-Use a dedicated virtual environment. Do not install this into Anaconda `base` or another shared Python environment, because shared environments may contain Azure CLI, Jupyter, or analytics packages with different dependency pins.
+Install or update the Fabric package directly with pip into your Python user site; no virtual environment is required.
 
 ### Windows PowerShell
 
 ```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+py -3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
 ```
 
 If `py` is not available, use `python` instead:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+python -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
 ```
 
 ### Mac Terminal
 
 ```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+python3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
 ```
 
-This installs the Fabric package plus the SQL/Key Vault dependencies inside `.venv`: `pandas`, `pyodbc`, `azure-identity`, and `azure-keyvault-secrets`.
+This installs the Fabric package plus the SQL/Key Vault dependencies: `pandas`, `pyodbc`, `azure-identity`, and `azure-keyvault-secrets`.
 
 ## Connect to Fabric SQL
 
@@ -60,7 +57,7 @@ Authenticate once by calling `connect_to_fabric_sql()`. Keep that same `conn` op
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
 
-conn = connect_to_fabric_sql(keyvault_auth_method="device_code")
+conn = connect_to_fabric_sql()
 
 tables = list_sql_tables(conn)
 print(tables)
@@ -78,12 +75,12 @@ conn.close()
 
 `connect_to_fabric_sql()` authenticates interactively to Key Vault.
 
-- By default it prints one device-code prompt.
-- Use the printed code at `https://login.microsoft.com/device`.
+- By default it opens a browser for Key Vault login.
+- Complete the browser sign-in with the approved account.
 - Complete MFA with the method enabled for your account.
-- Browser login is opt-in only by calling `connect_to_fabric_sql(keyvault_auth_method="browser")`.
+- If browser login is not possible, device-code login is available by calling `connect_to_fabric_sql(keyvault_auth_method="device_code")`.
 
-Expected device-code prompt:
+Optional device-code prompt:
 
 ```text
 SIGN IN REQUIRED
@@ -179,20 +176,18 @@ DBI::dbDisconnect(con)
 
 ### ImportError: cannot import name `connect_to_fabric_sql`
 
-You are using an old installed copy of `fabricpy`. Create a clean `.venv`, install from GitHub there, and verify the import with that `.venv` Python:
+You are using an old installed copy of `fabricpy`. Update from GitHub and verify the import:
 
 Windows:
 
 ```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+py -3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
 ```
 
 Mac:
 
 ```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+python3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
 ```
 
 Verify:
@@ -209,7 +204,7 @@ That is the older OneLake delegated-token path. For personal-laptop Key Vault + 
 
 ### Browser Login Does Not Open
 
-Use the printed device-code prompt at `https://login.microsoft.com/device`. If you see both browser login and device code, update the package and call `connect_to_fabric_sql(keyvault_auth_method="device_code")`.
+Browser login should open automatically. If it does not, update the package and use `connect_to_fabric_sql(keyvault_auth_method="device_code")` as a fallback.
 
 ### Microsoft Authenticator Shows No Code
 

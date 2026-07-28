@@ -255,7 +255,7 @@ def _require_sql_config(sql_cfg):
         )
 
 def _normalize_keyvault_auth_method(auth_method=None):
-    value = auth_method or "device_code"
+    value = auth_method or "browser"
     value = str(value).strip().lower().replace("-", "_")
     aliases = {
         "device": "device_code",
@@ -413,7 +413,7 @@ def _format_sql_table_name(table_name):
 
 def connect_to_fabric_sql(database=None, server=None, vault_url=None,
                           keyvault_tenant=None, odbc_driver="ODBC Driver 18 for SQL Server",
-                          timeout=30, keyvault_auth_method="device_code"):
+                          timeout=30, keyvault_auth_method="browser"):
     """Connect to Fabric SQL using SP credentials stored in Azure Key Vault.
 
     Researchers authenticate interactively to the Key Vault tenant. The service

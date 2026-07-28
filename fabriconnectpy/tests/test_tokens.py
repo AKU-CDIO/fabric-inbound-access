@@ -53,16 +53,16 @@ class TokenAuthTests(unittest.TestCase):
         with patch.dict(os.environ, env, clear=True):
             self.assertEqual(_try_env_var_token(), token)
 
-    def test_keyvault_auth_method_defaults_to_device_code(self):
-        with patch.dict(os.environ, {"FABRIC_KEYVAULT_AUTH_METHOD": "browser"}):
-            self.assertEqual(_normalize_keyvault_auth_method(), "device_code")
+    def test_keyvault_auth_method_defaults_to_browser(self):
+        with patch.dict(os.environ, {"FABRIC_KEYVAULT_AUTH_METHOD": "device_code"}):
+            self.assertEqual(_normalize_keyvault_auth_method(), "browser")
         self.assertEqual(_normalize_keyvault_auth_method("device-code"), "device_code")
         self.assertEqual(_normalize_keyvault_auth_method("browser"), "browser")
         self.assertEqual(_normalize_keyvault_auth_method("auto"), "auto")
         with self.assertRaisesRegex(ValueError, "keyvault_auth_method"):
             _normalize_keyvault_auth_method("bad")
 
-    def test_default_keyvault_credential_does_not_create_browser_credential(self):
+    def test_default_keyvault_credential_creates_browser_credential(self):
         calls = []
 
         class FakeDeviceCodeCredential:
@@ -81,8 +81,8 @@ class TokenAuthTests(unittest.TestCase):
         with patch.dict(sys.modules, {"azure.identity": fake_identity}):
             cred = _get_keyvault_credential("tenant-1")
 
-        self.assertIsInstance(cred, FakeDeviceCodeCredential)
-        self.assertEqual([kind for kind, _ in calls], ["device"])
+        self.assertIsInstance(cred, FakeInteractiveBrowserCredential)
+        self.assertEqual([kind for kind, _ in calls], ["browser"])
 
     def test_service_principal_secret_lookup_is_cached(self):
         class FakeCredential:
