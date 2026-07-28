@@ -3,11 +3,13 @@ Title: Read Microsoft Fabric Lakehouse Tables via OneLake
 Version: 0.1.0
 Authors@R: person("Derick", "Imbati", email = "derick.imbati@aku.edu", role = c("aut", "cre"),
              comment = "CDIO, AKU")
+Author: Derick Imbati [aut, cre]
+Maintainer: Derick Imbati <derick.imbati@aku.edu>
 Description: Provides functions to connect to Microsoft Fabric Lakehouses
     via the OneLake HTTPS API, bypassing the TDS/IP firewall bug.
     Uses Azure CLI or interactive device-code sign-in (email/MFA) for authentication and arrow for parquet reading.
 Depends: R (>= 4.0)
 Imports: arrow, utils, DBI, httr, jsonlite, odbc, processx
-Suggests: duckdb, dplyr, callr, testthat
+Suggests: duckdb, dplyr, callr, testthat, remotes
 License: MIT + file LICENSE
 Encoding: UTF-8

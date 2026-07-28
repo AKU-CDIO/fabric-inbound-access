@@ -1,4 +1,4 @@
-# fabricpy — Python package
+# fabricpy â€” Python package
 
 Read Delta tables from Microsoft Fabric Lakehouses via OneLake HTTPS. Works through restricted IP firewalls that block TDS (1433).
 
@@ -11,7 +11,7 @@ az login --tenant a5d4252a-02f9-4e60-96f0-9733baae4919 --use-device-code
 ## Install (one-liner)
 
 ```bash
-pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
+pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
 ```
 
 ## API
@@ -34,7 +34,7 @@ lh = FabricLakehouse()
 # Read all columns
 df = lh.to_pandas("dimenrolledparticipants")
 
-# Read only needed columns (predicate pushdown — less network)
+# Read only needed columns (predicate pushdown â€” less network)
 df = lh.to_pandas("factfitbitsleeplogs",
                    columns=["ParticipantIdentifier", "MinutesAsleep"])
 
@@ -70,5 +70,24 @@ lh = FabricLakehouse(
 ## Large tables
 
 - `deltalake` reads directly from OneLake (no disk download)
-- Use `columns=` for predicate pushdown — only requested bytes cross the network
+- Use `columns=` for predicate pushdown â€” only requested bytes cross the network
 - No temp files, no accumulation
+
+## Service Principal SQL Access
+
+Approved researchers can connect from personal laptops through Azure Key Vault. Python signs in interactively when `connect_to_fabric_sql()` is first called: browser login first, then a device-code prompt if the browser login times out.
+
+```bash
+pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
+```
+
+```python
+from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table
+
+conn = connect_to_fabric_sql()
+print(list_sql_tables(conn))
+df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
+conn.close()
+```
+
+This follows the Azure AD + MFA -> Key Vault -> service principal -> Fabric SQL flow.

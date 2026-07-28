@@ -40,3 +40,10 @@ test_that("cached tokens refresh before expiry", {
   expect_true(fabriconnect:::.token_is_usable(near_expiry))
   expect_false(fabriconnect:::.token_is_usable(expired))
 })
+
+
+test_that("SQL identifiers are bracket-quoted for service-principal access", {
+  expect_identical(fabriconnect:::.format_sql_table_name("people"), "[dbo].[people]")
+  expect_identical(fabriconnect:::.format_sql_table_name("dbo.people"), "[dbo].[people]")
+  expect_identical(fabriconnect:::.format_sql_table_name("db]o.people"), "[db]]o].[people]")
+})

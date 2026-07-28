@@ -1,4 +1,7 @@
 query_tables <- function(conn, sql, table_columns = NULL) {
+  if (inherits(conn, "DBIConnection")) {
+    return(query_sql(conn, sql))
+  }
   if (!requireNamespace("duckdb", quietly = TRUE)) {
     stop("Package 'duckdb' is required. Install with: install.packages('duckdb')")
   }

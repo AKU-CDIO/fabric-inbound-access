@@ -14,5 +14,14 @@
     "resource_group": "CDIOUZIMA",
     "account_name": "aa-uzima-token-broker",
     "webhook_url": "https://a28ba9ca-fccc-4d71-8568-1d6340b357d7.webhook.ne.azure-automation.net/webhooks?token=UIVQO89cW8jEi0CMiTp2XFVC4kArToEMjI8HZBPsSlk%3d"
+  },
+  "sql_access": {
+    "key_vault_url": "https://uzima-secrets-xfmh.vault.azure.net",
+    "key_vault_tenant": "4fde8ff3-4dd5-42e1-a25a-e42905610d66",
+    "server": "fis5jjpzajqe5fxqs4z3vlsjde-zgopmz6jacoezkc3hd6da52lpm.datawarehouse.fabric.microsoft.com",
+    "default_database": "uzima_db_backup",
+    "tenant_secret": "fabric-sp-tenant-id",
+    "client_id_secret": "fabric-sp-client-id",
+    "client_secret_secret": "fabric-sp-client-secret"
   }
 }

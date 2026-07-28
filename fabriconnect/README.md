@@ -54,6 +54,22 @@ The `FABRIC_WEBHOOK_URL` is pre-configured in the package. If you need to set it
 setx FABRIC_WEBHOOK_URL https://a28ba9ca-fccc-4d71-8568-1d6340b357d7.webhook.ne.azure-automation.net/webhooks?token=UIVQO89cW8jEi0CMiTp2XFVC4kArToEMjI8HZBPsSlk%3d
 ```
 
+### External researchers (service principal via Key Vault)
+
+Approved researchers can connect from personal laptops using Azure AD/MFA and Azure Key Vault.
+
+```bash
+az login --tenant 4fde8ff3-4dd5-42e1-a25a-e42905610d66
+```
+
+```r
+library(fabriconnect)
+con <- connect_to_fabric_sql()
+list_tables(con)
+read_table(con, "dbo.dimenrolledparticipants")
+DBI::dbDisconnect(con)
+```
+
 ## List tables
 
 ```r

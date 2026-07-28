@@ -9,6 +9,7 @@ import webbrowser
 import time
 import urllib.parse
 import tempfile
+import struct
 
 _CONFIG = None
 
@@ -24,6 +25,8 @@ def _load_config():
 AZ_CMD = "az.cmd"
 STORAGE_RESOURCE = "https://storage.azure.com"
 FABRIC_API_RESOURCE = "https://api.fabric.microsoft.com"
+FABRIC_SQL_SCOPE = "https://database.windows.net/.default"
+SQL_ACCESS_TOKEN_ATTR = 1256
 
 _TOKEN_CACHE = {}
 TOKEN_REFRESH_BUFFER_SECONDS = 300
@@ -310,6 +313,221 @@ def _try_azure_cli(tenant, resource, az_cmd):
     if result.returncode != 0:
         return None
     return _normalize_access_token(result.stdout)
+
+def _get_sql_access_config(database=None, server=None, vault_url=None, keyvault_tenant=None):
+    cfg = _load_config()
+    sql_cfg = cfg.get("sql_access", {})
+    return {
+        "database": (
+            database
+            or os.environ.get("FABRIC_SQL_DATABASE")
+            or sql_cfg.get("default_database")
+            or cfg.get("lakehouse_name")
+        ),
+        "server": (
+            server
+            or os.environ.get("FABRIC_SQL_SERVER")
+            or sql_cfg.get("server")
+        ),
+        "vault_url": (
+            vault_url
+            or os.environ.get("FABRIC_KEYVAULT_URL")
+            or sql_cfg.get("key_vault_url")
+        ),
+        "keyvault_tenant": (
+            keyvault_tenant
+            or os.environ.get("FABRIC_KEYVAULT_TENANT")
+            or sql_cfg.get("key_vault_tenant")
+        ),
+        "secret_names": {
+            "tenant_id": sql_cfg.get("tenant_secret", "fabric-sp-tenant-id"),
+            "client_id": sql_cfg.get("client_id_secret", "fabric-sp-client-id"),
+            "client_secret": sql_cfg.get("client_secret_secret", "fabric-sp-client-secret"),
+        },
+    }
+
+
+def _require_sql_config(sql_cfg):
+    missing = [name for name in ("database", "server", "vault_url", "keyvault_tenant")
+               if not sql_cfg.get(name)]
+    if missing:
+        raise ValueError(
+            "Missing Fabric SQL access configuration: "
+            + ", ".join(missing)
+            + ". Set it in fabricpy/config.json or environment variables."
+        )
+
+
+def _get_keyvault_credential(keyvault_tenant):
+    try:
+        from azure.identity import DeviceCodeCredential, InteractiveBrowserCredential
+    except ImportError as exc:
+        raise ImportError(
+            "Service-principal SQL access requires azure-identity. "
+            "Install with: pip install azure-identity"
+        ) from exc
+
+    browser_credential = InteractiveBrowserCredential(
+        tenant_id=keyvault_tenant,
+        timeout=180,
+    )
+    try:
+        browser_credential.get_token("https://vault.azure.net/.default")
+        return browser_credential
+    except Exception as exc:
+        print(
+            "Browser login did not complete; falling back to device-code login. "
+            f"Reason: {type(exc).__name__}: {exc}",
+            flush=True,
+        )
+
+    def print_device_code(*args, **kwargs):
+        if len(args) == 1 and hasattr(args[0], "verification_uri"):
+            verification_uri = args[0].verification_uri
+            user_code = args[0].user_code
+        else:
+            verification_uri = kwargs.get("verification_uri") or (
+                args[0] if len(args) > 0 else "https://login.microsoft.com/device"
+            )
+            user_code = kwargs.get("user_code") or (
+                args[1] if len(args) > 1 else "<code not supplied>"
+            )
+        print("\nSIGN IN REQUIRED", flush=True)
+        print(f"Open: {verification_uri}", flush=True)
+        print(f"Code: {user_code}\n", flush=True)
+
+    device_credential = DeviceCodeCredential(
+        tenant_id=keyvault_tenant,
+        prompt_callback=print_device_code,
+    )
+    device_credential.get_token("https://vault.azure.net/.default")
+    return device_credential
+
+
+def _get_service_principal_from_keyvault(sql_cfg):
+    try:
+        from azure.keyvault.secrets import SecretClient
+    except ImportError as exc:
+        raise ImportError(
+            "Service-principal SQL access requires azure-keyvault-secrets. "
+            "Install with: pip install azure-keyvault-secrets"
+        ) from exc
+
+    credential = _get_keyvault_credential(sql_cfg["keyvault_tenant"])
+    client = SecretClient(vault_url=sql_cfg["vault_url"], credential=credential)
+    names = sql_cfg["secret_names"]
+    return {
+        "tenant_id": client.get_secret(names["tenant_id"]).value,
+        "client_id": client.get_secret(names["client_id"]).value,
+        "client_secret": client.get_secret(names["client_secret"]).value,
+    }
+
+
+def _get_fabric_sql_token(sp):
+    try:
+        from azure.identity import ClientSecretCredential
+    except ImportError as exc:
+        raise ImportError(
+            "Service-principal SQL access requires azure-identity. "
+            "Install with: pip install azure-identity"
+        ) from exc
+
+    return ClientSecretCredential(
+        tenant_id=sp["tenant_id"],
+        client_id=sp["client_id"],
+        client_secret=sp["client_secret"],
+    ).get_token(FABRIC_SQL_SCOPE).token
+
+
+def _pack_odbc_access_token(token):
+    token_bytes = token.encode("utf-16-le")
+    return struct.pack(f"<I{len(token_bytes)}s", len(token_bytes), token_bytes)
+
+
+def _build_sql_connection_string(server, database, odbc_driver):
+    return (
+        f"Driver={{{odbc_driver}}};"
+        f"Server=tcp:{server},1433;"
+        f"Database={database};"
+        "Encrypt=yes;"
+        "TrustServerCertificate=no;"
+    )
+
+
+def _quote_sql_identifier(identifier):
+    if identifier is None:
+        raise ValueError("SQL identifier cannot be None")
+    return "[" + str(identifier).replace("]", "]]") + "]"
+
+
+def _format_sql_table_name(table_name):
+    parts = [p for p in str(table_name).split(".") if p]
+    if len(parts) == 1:
+        parts.insert(0, "dbo")
+    if len(parts) != 2:
+        raise ValueError("table_name must be 'table' or 'schema.table'")
+    return ".".join(_quote_sql_identifier(part) for part in parts)
+
+
+def connect_to_fabric_sql(database=None, server=None, vault_url=None,
+                          keyvault_tenant=None, odbc_driver="ODBC Driver 18 for SQL Server",
+                          timeout=30):
+    """Connect to Fabric SQL using SP credentials stored in Azure Key Vault.
+
+    Researchers authenticate interactively to the Key Vault tenant. The service
+    principal secret is retrieved at runtime and exchanged for a Fabric SQL
+    access token. No service-principal secret is written locally.
+    """
+    try:
+        import pyodbc
+    except ImportError as exc:
+        raise ImportError(
+            "Fabric SQL access requires pyodbc and Microsoft ODBC Driver 18. "
+            "Install with: pip install pyodbc"
+        ) from exc
+
+    sql_cfg = _get_sql_access_config(database, server, vault_url, keyvault_tenant)
+    _require_sql_config(sql_cfg)
+    sp = _get_service_principal_from_keyvault(sql_cfg)
+    token = _get_fabric_sql_token(sp)
+    conn_str = _build_sql_connection_string(
+        sql_cfg["server"], sql_cfg["database"], odbc_driver
+    )
+    return pyodbc.connect(
+        conn_str,
+        attrs_before={SQL_ACCESS_TOKEN_ATTR: _pack_odbc_access_token(token)},
+        timeout=timeout,
+    )
+
+
+def list_sql_tables(conn):
+    """List schema-qualified tables from a Fabric SQL pyodbc connection."""
+    import pandas as pd
+    df = pd.read_sql_query(
+        "SELECT TABLE_SCHEMA, TABLE_NAME "
+        "FROM INFORMATION_SCHEMA.TABLES "
+        "ORDER BY TABLE_SCHEMA, TABLE_NAME",
+        conn,
+    )
+    return [f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}" for row in df.itertuples(index=False)]
+
+
+def query_sql(conn, sql):
+    """Run SQL against a Fabric SQL pyodbc connection and return a DataFrame."""
+    import pandas as pd
+    return pd.read_sql_query(sql, conn)
+
+
+def read_sql_table(conn, table_name, columns=None, top=None):
+    """Read a Fabric SQL table into a pandas DataFrame."""
+    cols = "*"
+    if columns is not None:
+        cols = ", ".join(_quote_sql_identifier(col) for col in columns)
+    top_clause = ""
+    if top is not None:
+        top_clause = f"TOP {int(top)} "
+    sql = f"SELECT {top_clause}{cols} FROM {_format_sql_table_name(table_name)}"
+    return query_sql(conn, sql)
 
 def _try_msal_device_code(tenant, resource):
     import sys

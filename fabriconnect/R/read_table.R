@@ -14,8 +14,7 @@
 #' @export
 read_table <- function(conn, table_name, columns = NULL, overwrite = TRUE) {
   if (inherits(conn, "DBIConnection")) {
-    sql <- paste0("SELECT * FROM ", table_name)
-    return(DBI::dbGetQuery(conn, sql))
+    return(read_sql_table(conn, table_name, columns = columns))
   }
 
   token <- .get_fabric_token(conn$fabric_tenant, conn$access_token)

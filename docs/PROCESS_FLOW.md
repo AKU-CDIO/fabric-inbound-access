@@ -123,3 +123,19 @@ Returns:
 ```json
 {"status": "success", "has_refresh_token": true, "access_token_valid": true, "expires_in_seconds": 3079, "vm_ips": ["4.245.225.10", "102.0.6.106"]}
 ```
+
+
+## Service Principal Key Vault Flow
+
+```mermaid
+flowchart LR
+    R["Researcher personal laptop"] --> A["Azure AD login + MFA"]
+    A --> KV["Azure Key Vault\nSP credentials"]
+    KV --> T["ClientSecretCredential\nFabric SQL token"]
+    T --> F["Microsoft Fabric SQL endpoint"]
+
+    KV -. "Secrets do not persist locally" .-> RBAC["Key Vault RBAC"]
+    RBAC -. "Approved users only" .-> A
+```
+
+This is the personal-laptop path. It is separate from the VM token-broker path above and should be used when approved researchers need direct Fabric SQL access from Windows or Mac.

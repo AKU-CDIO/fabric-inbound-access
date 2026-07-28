@@ -1,12 +1,12 @@
 # UZIMA Fabric Data Access
 
-Access UZIMA study data from Microsoft Fabric on the approved VM — **no login, no setup needed**.
+Access UZIMA study data from Microsoft Fabric on the approved VM â€” **no login, no setup needed**.
 
 **Data access is VM-only.** Fabric inbound access restrictions ensure data can only be read from the approved VM (`uzima`).
 
 ## Quick Start
 
-**R / RStudio** — just paste this in any R Markdown chunk:
+**R / RStudio** â€” just paste this in any R Markdown chunk:
 
 ```r
 library(fabriconnect)
@@ -15,7 +15,7 @@ tables <- list_tables(conn)
 df <- read_table(conn, "registeredparticipants")
 ```
 
-**Python** — in a terminal or notebook:
+**Python** â€” in a terminal or notebook:
 
 ```python
 from fabricpy import FabricLakehouse
@@ -30,7 +30,7 @@ That's it. No sign-in, no tokens, no env vars. See [`UZIMA_Instructions.docx`](U
 
 | Lakehouse | Tables | Description |
 |---|---|---|
-| `uzima_db_backup` | 31 | Primary — Fitbit, surveys, participants, agents |
+| `uzima_db_backup` | 31 | Primary â€” Fitbit, surveys, participants, agents |
 | `HCW_fitbit_data` | 5 | fitbitactivitylogs, fitbitdailydata, fitbitdevices, etc. |
 | `Qualtrics` | 1 | `dbo.aku_survey_responses_2026` (256 columns) |
 
@@ -84,11 +84,35 @@ FabricLakehouse.cross_query(
 )
 ```
 
+## Service Principal Access via Key Vault
+
+For approved researchers on personal laptops, this repo also supports the Key Vault service-principal flow shown in the access diagram. Researchers authenticate to Azure AD/MFA, retrieve SP credentials from Azure Key Vault, and connect to Fabric SQL.
+
+Python:
+
+```python
+from fabricpy import connect_to_fabric_sql, read_sql_table
+conn = connect_to_fabric_sql()
+df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
+conn.close()
+```
+
+R:
+
+```r
+library(fabriconnect)
+con <- connect_to_fabric_sql()
+read_table(con, "dbo.dimenrolledparticipants")
+DBI::dbDisconnect(con)
+```
+
+See [docs/FABRIC_SP_ACCESS_SETUP.md](docs/FABRIC_SP_ACCESS_SETUP.md) for setup, admin RBAC, and troubleshooting.
+
 ## How Authentication Works (for reference)
 
 1. An admin authenticates once to the Fabric tenant via device code
 2. Tokens are AES-encrypted and stored on the VM, bound to the machine's hardware key
-3. R and Python packages decrypt them on-the-fly via PowerShell — no credentials touch the network
+3. R and Python packages decrypt them on-the-fly via PowerShell â€” no credentials touch the network
 4. An Azure Automation runbook refreshes the tokens in the cloud every 50 minutes
 5. As a fallback, the webhook path works via `az rest` if the Azure CLI is signed in
 
@@ -256,24 +280,24 @@ head(df)
 ## Architecture
 
 ```
-┌──────────────────────┐     ┌──────────────────┐
-│  Azure Automation     │────▶│  Key Vault       │
-│  (refresh every 50m)  │     │  (encrypted      │
-│                       │     │   master token)  │
-└──────────┬───────────┘     └──────────────────┘
-           │
-           ▼
-┌──────────────────────────────────────────────────┐
-│  Approved VM (uzima)                              │
-│  ├── C:\ProgramData\UZIMA\FabricTokenBroker\      │
-│  │   ├── access-token.enc   (AES, machine-bound)  │
-│  │   ├── refresh-token.enc                         │
-│  │   ├── get-token.ps1      (decrypt helper)      │
-│  │   ├── researchers.json   (email whitelist)     │
-│  │   └── fabriconnect-patch.R                     │
-│  ├── R:  fabriconnect (auto-config via Rprofile)  │
-│  └── Python: fabricpy (auto via _try_local_token) │
-└──────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  Azure Automation     â”‚â”€â”€â”€â”€â–¶â”‚  Key Vault       â”‚
+â”‚  (refresh every 50m)  â”‚     â”‚  (encrypted      â”‚
+â”‚                       â”‚     â”‚   master token)  â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+           â”‚
+           â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  Approved VM (uzima)                              â”‚
+â”‚  â”œâ”€â”€ C:\ProgramData\UZIMA\FabricTokenBroker\      â”‚
+â”‚  â”‚   â”œâ”€â”€ access-token.enc   (AES, machine-bound)  â”‚
+â”‚  â”‚   â”œâ”€â”€ refresh-token.enc                         â”‚
+â”‚  â”‚   â”œâ”€â”€ get-token.ps1      (decrypt helper)      â”‚
+â”‚  â”‚   â”œâ”€â”€ researchers.json   (email whitelist)     â”‚
+â”‚  â”‚   â””â”€â”€ fabriconnect-patch.R                     â”‚
+â”‚  â”œâ”€â”€ R:  fabriconnect (auto-config via Rprofile)  â”‚
+â”‚  â””â”€â”€ Python: fabricpy (auto via _try_local_token) â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ## Install
@@ -292,7 +316,7 @@ remotes::install_github(
 ### Python
 
 ```bash
-pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
+pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
 ```
 
 > **Note:** On the approved VM, both packages are pre-installed and pre-configured.
@@ -301,10 +325,10 @@ pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbou
 
 See [Runbooks/README.md](Runbooks/README.md) for deploying the token broker system:
 
-- `deploy-token-broker.ps1 -Mode LocalVM` — initial setup (admin device-code auth)
-- `deploy-token-broker.ps1 -Mode AzureAutomation` — cloud refresh setup
-- `vm-token-client.ps1` / `vm-token-client-local.ps1` — client utilities
-- `C:\ProgramData\UZIMA\FabricTokenBroker\researchers.json` — manage approved researcher emails
+- `deploy-token-broker.ps1 -Mode LocalVM` â€” initial setup (admin device-code auth)
+- `deploy-token-broker.ps1 -Mode AzureAutomation` â€” cloud refresh setup
+- `vm-token-client.ps1` / `vm-token-client-local.ps1` â€” client utilities
+- `C:\ProgramData\UZIMA\FabricTokenBroker\researchers.json` â€” manage approved researcher emails
 
 ## Common Issues
 
@@ -398,7 +422,7 @@ Install ODBC Driver 18 from https://learn.microsoft.com/en-us/sql/connect/odbc/d
 
 ## Support
 
-Contact Derick Imbati — derick.imbati@aku.edu
+Contact Derick Imbati â€” derick.imbati@aku.edu
 
 ## License
 
