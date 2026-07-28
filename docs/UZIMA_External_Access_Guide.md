@@ -1,52 +1,159 @@
-# UZIMA Fabric Data Access — External Researcher Setup Guide
+# UZIMA Fabric Data Access - External Researcher Setup Guide
 
-**Version:** 1.1
+**Version:** 1.2
 **Date:** July 2026
-**Contact:** Derick Imbati — derick.imbati@aku.edu
+**Contact:** Derick Imbati - derick.imbati@aku.edu
 
 ---
 
 ## Overview
 
-This guide explains how to access UZIMA study data from Microsoft Fabric on your personal computer. You can connect from **Windows** or **Mac** — no VPN or VM access required.
+This guide explains how approved external researchers can access UZIMA study data from Microsoft Fabric on a personal Windows or Mac computer. The supported personal-laptop path is:
 
-**What you need:**
-- A Windows or Mac computer
-- **R and RStudio** OR **Python and Jupyter Notebook**
+1. Sign in interactively to the AKU Azure tenant.
+2. Retrieve service-principal credentials from Azure Key Vault.
+3. Use the service principal to connect to the Microsoft Fabric SQL endpoint.
+4. Query only the authorized Fabric data.
+
+No service-principal secret should be saved in notebooks, scripts, or local files.
+
+## What You Need
+
+- Windows or Mac computer
 - Internet connection
+- Python 3.10+ with a dedicated `.venv`; do not install into Anaconda `base`
+- Microsoft ODBC Driver 18 for SQL Server
+- For Mac: `unixODBC` is also required
+- An approved account added to the AKU tenant and granted Key Vault access
 
-**Works on both platforms:**
+## Install Python Package
 
-| Language | Install | Auth |
-|---|---|---|
-| R | `remotes::install_github(...)` | `auth = "sp_vault"` |
-| Python | `pip install ...` | `FabricLakehouse()` |
+Use a dedicated virtual environment. Do not install this into Anaconda `base` or another shared Python environment, because shared environments may contain Azure CLI, Jupyter, or analytics packages with different dependency pins.
 
----
+### Windows PowerShell
 
-## Step 1: Install Prerequisites
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+.\.venv\Scripts\python.exe docs\test.py
+```
 
-### Option A: R and RStudio
+If `py` is not available, use `python` instead:
 
-1. Download R from: https://cran.r-project.org/bin/windows/base/ (Windows) or https://cran.r-project.org/bin/macosx/ (Mac)
-2. Download RStudio from: https://posit.co/download/rstudio-desktop/
-3. Install both (accept default settings)
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+.\.venv\Scripts\python.exe docs\test.py
+```
 
-### Option B: Python
+### Mac Terminal
 
-1. Download Python from: https://www.python.org/downloads/ (Windows/Mac)
-2. Or install Anaconda: https://www.anaconda.com/download
-3. Open Terminal (Mac) or Command Prompt (Windows)
+```bash
+python3 -m venv .venv
+./.venv/bin/python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+./.venv/bin/python docs/test.py
+```
 
----
+This installs the Fabric package plus the SQL/Key Vault dependencies inside `.venv`: `pandas`, `pyodbc`, `azure-identity`, and `azure-keyvault-secrets`.
 
-## Step 2: Install the Package
+## Connect to Fabric SQL
 
-### R
+Authenticate once by calling `connect_to_fabric_sql()`. Keep that same `conn` open while you list tables, read tables, and run SQL. Close it once in `finally`. Do not call `connect_to_fabric_sql()` again for each query, because that can trigger repeated browser/device-code authentication.
 
-Open **RStudio** and run:
+```python
+from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
+
+conn = connect_to_fabric_sql()
+
+try:
+    tables = list_sql_tables(conn)
+    print(tables)
+
+    df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
+    print(df.head())
+
+    summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+    print(summary)
+finally:
+    conn.close()
+```
+
+## Authentication Behavior
+
+`connect_to_fabric_sql()` authenticates interactively to Key Vault.
+
+- It first tries browser login.
+- If browser login does not complete, it prints a device-code prompt.
+- Use the printed code at `https://login.microsoft.com/device`.
+- Complete MFA with the method enabled for your account.
+
+Expected device-code prompt:
+
+```text
+SIGN IN REQUIRED
+Open: https://login.microsoft.com/device
+Code: XXXXXXXX
+```
+
+Tenant used for Key Vault login:
+
+```text
+4fde8ff3-4dd5-42e1-a25a-e42905610d66
+```
+
+## Common Queries
+
+Run these examples while the same `conn` from the previous section is still open. If you already ran `conn.close()`, create a new connection once, run all needed queries, then close it again.
+
+### List Tables
+
+```python
+tables = list_sql_tables(conn)
+print(tables)
+```
+
+### Read Selected Columns
+
+```python
+df = read_sql_table(
+    conn,
+    "dbo.dimenrolledparticipants",
+    columns=["ParticipantIdentifier", "Gender", "Age"],
+    top=100,
+)
+print(df.head())
+```
+
+### Filter With SQL
+
+```python
+df = query_sql(conn, """
+    SELECT ParticipantIdentifier, Gender, Age
+    FROM dbo.dimenrolledparticipants
+    WHERE Gender = 'Female'
+""")
+print(df.head())
+```
+
+### Large Tables
+
+Use `TOP`, selected columns, and filters before loading data into pandas:
+
+```python
+df = query_sql(conn, """
+    SELECT TOP 100 ParticipantIdentifier, date, steps
+    FROM dbo.factfitbitdailydata
+    WHERE date >= '2023-01-01'
+""")
+print(df.head())
+```
+
+## R Users
+
+R service-principal SQL access is available, but the current R helper uses Azure CLI to obtain the Key Vault token.
 
 ```r
+install.packages(c("DBI", "odbc", "httr", "jsonlite", "dplyr", "remotes"))
 remotes::install_github(
   "AKU-CDIO/fabric-inbound-access",
   subdir = "fabriconnect",
@@ -55,497 +162,99 @@ remotes::install_github(
 )
 ```
 
-If you get an error about `remotes`, install it first:
-
-```r
-install.packages("remotes")
-```
-
-### Python
-
-Open **Terminal** (Mac) or **Command Prompt** (Windows) and run:
-
-```bash
-pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
-```
-
----
-
-## Step 3: Sign In to Azure
-
-### Windows users (optional — for faster auth)
-
-If you installed Azure CLI, open **Command Prompt** or **PowerShell** and run:
+Before connecting in R, sign in:
 
 ```bash
 az login --tenant 4fde8ff3-4dd5-42e1-a25a-e42905610d66
 ```
 
-A browser window will open. Sign in with your AKU/UMICH email address and complete the MFA process.
-
-**Note:** You must sign in once per session. If you restart your computer, you'll need to sign in again.
-
-### Mac users
-
-No sign-in needed — you'll authenticate when you first connect.
-
----
-
-## Step 4: Connect to Fabric
-
-### R
+Then use:
 
 ```r
 library(fabriconnect)
 
-# Connect to the main database
-conn <- connect_to_fabric(auth = "sp_vault")
+con <- connect_to_fabric_sql()
+tryCatch({
+  list_tables(con)
+  df <- read_table(con, "dbo.dimenrolledparticipants")
+}, finally = {
+  DBI::dbDisconnect(con)
+})
 ```
-
-### Python
-
-```python
-from fabricpy import FabricLakehouse
-
-# Connect — opens browser for login
-lh = FabricLakehouse()
-```
-
-**Note:** On first connect, a browser window will open for sign-in (device code flow). This authenticates you to Fabric.
-
----
-
-## Step 5: Explore the Data
-
-### List all tables
-
-**R:**
-```r
-tables <- list_tables(conn)
-tables
-```
-
-**Python:**
-```python
-tables = lh.list_tables()
-print(tables)
-```
-
-### Read a table
-
-**R:**
-```r
-# Small table — read full data
-df <- read_table(conn, "dimenrolledparticipants")
-head(df)
-
-# Large table — use SQL LIMIT (Windows only)
-df <- DBI::dbGetQuery(conn, "SELECT TOP 100 * FROM factfitbitdailydata")
-head(df)
-```
-
-**Python:**
-```python
-# Small table
-df = lh.read_table("dimenrolledparticipants").to_pandas()
-print(df.head())
-
-# Large table — use SQL
-df = lh.sql("SELECT TOP 100 * FROM factfitbitdailydata").to_pandas()
-print(df.head())
-```
-
-### Run SQL queries
-
-**R:**
-```r
-# Count participants
-DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM dimenrolledparticipants")
-
-# Group by gender
-DBI::dbGetQuery(conn, "
-  SELECT Gender, COUNT(*) AS n
-  FROM dimenrolledparticipants
-  GROUP BY Gender
-")
-```
-
-**Python:**
-```python
-# Count participants
-df = lh.sql("SELECT COUNT(*) AS n FROM dimenrolledparticipants").to_pandas()
-print(df)
-
-# Group by gender
-df = lh.sql("SELECT Gender, COUNT(*) AS n FROM dimenrolledparticipants GROUP BY Gender").to_pandas()
-print(df)
-```
-
----
-
-## Step 6: Access Different Databases
-
-### HCW Fitbit Data
-
-**R:**
-```r
-conn_hcw <- connect_to_fabric(auth = "sp_vault", lakehouse_name = "HCW_fitbit_data")
-tables_hcw <- list_tables(conn_hcw)
-tables_hcw
-
-df_hcw <- DBI::dbGetQuery(conn_hcw, "SELECT TOP 10 * FROM fitbitdailydata")
-head(df_hcw)
-```
-
-**Python:**
-```python
-lh_hcw = FabricLakehouse(lakehouse="HCW_fitbit_data")
-tables_hcw = lh_hcw.list_tables()
-print(tables_hcw)
-
-df_hcw = lh_hcw.sql("SELECT TOP 10 * FROM fitbitdailydata").to_pandas()
-print(df_hcw.head())
-```
-
-### Qualtrics Surveys
-
-**R:**
-```r
-conn_qualtrics <- connect_to_fabric(auth = "sp_vault", database = "Qualtrics")
-df_surveys <- DBI::dbGetQuery(conn_qualtrics, "SELECT TOP 100 * FROM dbo.aku_survey_responses_2026")
-head(df_surveys)
-```
-
-**Python:**
-```python
-lh_qualtrics = FabricLakehouse(lakehouse="Qualtrics")
-df_surveys = lh_qualtrics.sql("SELECT TOP 100 * FROM dbo.aku_survey_responses_2026").to_pandas()
-print(df_surveys.head())
-```
-
----
-
-## Step 7: Common Tasks
-
-### Filter data
-
-**R (Windows — SQL):**
-```r
-df <- DBI::dbGetQuery(conn, "
-  SELECT ParticipantIdentifier, Gender, DateOfBirth
-  FROM dimenrolledparticipants
-  WHERE Gender = 'Female'
-")
-```
-
-**R (Mac — R filtering):**
-```r
-df <- read_table(conn, "dimenrolledparticipants")
-df <- df[df$Gender == "Female", ]
-```
-
-**Python:**
-```python
-df = lh.sql("SELECT * FROM dimenrolledparticipants WHERE Gender = 'Female'").to_pandas()
-print(df.head())
-```
-
-### Select specific columns
-
-**R (Windows — SQL):**
-```r
-df <- DBI::dbGetQuery(conn, "
-  SELECT ParticipantIdentifier, Gender, PostalCode
-  FROM dimenrolledparticipants
-")
-```
-
-**R (Mac — columns parameter):**
-```r
-df <- read_table(conn, "dimenrolledparticipants",
-                 columns = c("ParticipantIdentifier", "Gender", "PostalCode"))
-```
-
-**Python:**
-```python
-df = lh.read_table("dimenrolledparticipants",
-                   columns=["ParticipantIdentifier", "Gender", "PostalCode"]).to_pandas()
-print(df.head())
-```
-
-### Join tables
-
-**R (Windows — SQL):**
-```r
-participants <- DBI::dbGetQuery(conn, "
-  SELECT ParticipantIdentifier, Gender
-  FROM dimenrolledparticipants
-")
-
-steps <- DBI::dbGetQuery(conn, "
-  SELECT participantidentifier, SUM(steps) AS total_steps
-  FROM factfitbitdailydata
-  GROUP BY participantidentifier
-")
-
-df <- merge(participants, steps,
-            by.x = "ParticipantIdentifier",
-            by.y = "participantidentifier",
-            all.x = TRUE)
-head(df)
-```
-
-**R (Mac — R merge):**
-```r
-participants <- read_table(conn, "dimenrolledparticipants")
-steps <- read_table(conn, "factfitbitdailydata")
-
-steps_agg <- aggregate(steps ~ participantidentifier, data = steps, FUN = sum)
-
-df <- merge(participants, steps_agg,
-            by.x = "ParticipantIdentifier",
-            by.y = "participantidentifier",
-            all.x = TRUE)
-head(df)
-```
-
-**Python:**
-```python
-participants = lh.read_table("dimenrolledparticipants").to_pandas()
-steps = lh.read_table("factfitbitdailydata").to_pandas()
-
-steps_agg = steps.groupby("participantidentifier")["steps"].sum().reset_index()
-
-df = participants.merge(steps_agg,
-                        left_on="ParticipantIdentifier",
-                        right_on="participantidentifier",
-                        how="left")
-print(df.head())
-```
-
-### Cross-database join
-
-**R (Windows — SQL only):**
-```r
-conn_main <- connect_to_fabric(auth = "sp_vault")
-conn_hcw <- connect_to_fabric(auth = "sp_vault", lakehouse_name = "HCW_fitbit_data")
-
-df <- DBI::dbGetQuery(conn_main, "
-  SELECT p.ParticipantIdentifier, p.Gender, f.date, f.steps
-  FROM uzima_db_backup.dbo.dimenrolledparticipants p
-  JOIN HCW_fitbit_data.dbo.fitbitdailydata f
-    ON p.ParticipantIdentifier = f.participantidentifier
-")
-head(df)
-```
-
-**Python:**
-```python
-from fabricpy import FabricLakehouse
-
-uzima = FabricLakehouse(lakehouse="uzima_db_backup")
-hcw = FabricLakehouse(lakehouse="HCW_fitbit_data")
-
-df = FabricLakehouse.cross_query(
-    {"uzima": uzima, "hcw": hcw},
-    """SELECT p.ParticipantIdentifier, p.Gender, f.date, f.steps
-       FROM uzima.dimenrolledparticipants p
-       JOIN hcw.fitbitdailydata f
-         ON p.ParticipantIdentifier = f.participantidentifier"""
-).to_pandas()
-print(df.head())
-```
-
----
-
-## Step 8: Disconnect
-
-### R
-
-```r
-DBI::dbDisconnect(conn)
-```
-
-### Python
-
-No explicit disconnect needed — the connection closes automatically.
-
----
-
-## Available Tables
-
-### uzima_db_backup (default)
-
-| Table | Description |
-|---|---|
-| `dimenrolledparticipants` | Participant demographics |
-| `dimsurveyresults` | Survey responses |
-| `dimsurveydictionary` | Survey question definitions |
-| `factfitbitdailydata` | Daily Fitbit metrics |
-| `factfitbitsleeplogs` | Sleep session logs |
-| `factfitbitactivitieslogs` | Activity logs |
-| `factfitbitrestingheartrates` | Resting heart rate readings |
-| `registeredparticipants` | Registration data |
-| `agents` | Research agent info |
-
-### HCW_fitbit_data
-
-| Table | Description |
-|---|---|
-| `fitbitdailydata` | Daily metrics (66 columns) |
-| `fitbitsleepdetails` | Detailed sleep sessions |
-| `fitbitactivitylogs` | Activity records |
-| `fitbitdevices` | Device metadata |
-| `fitbitprofiles` | User profiles |
-
-### Qualtrics
-
-| Table | Description |
-|---|---|
-| `dbo.aku_survey_responses_2026` | Full survey responses (256 columns) |
-
----
 
 ## Troubleshooting
 
-### Windows: "az: command not found"
+### ImportError: cannot import name `connect_to_fabric_sql`
 
-Azure CLI is not installed or not in PATH. Reinstall from https://aka.ms/installazurecli and restart your computer.
+You are using an old installed copy of `fabricpy`. Create a clean `.venv`, install from GitHub there, and run the test with that `.venv` Python:
 
-### Windows: "ODBC Driver 18 for SQL Server not found"
+Windows:
 
-Install the ODBC driver from: https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server
-
-### Windows: "Failed to get Key Vault token"
-
-Run `az login` again in Command Prompt or PowerShell.
-
-### Mac/Linux: Device code auth not working
-
-Make sure you're using the latest version of the package:
-
-```r
-# R
-remotes::install_github("AKU-CDIO/fabric-inbound-access",
-  subdir = "fabriconnect", force = TRUE)
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+.\.venv\Scripts\python.exe docs\test.py
 ```
+
+Mac:
 
 ```bash
-# Python
-pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall
+python3 -m venv .venv
+./.venv/bin/python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+./.venv/bin/python docs/test.py
 ```
 
-### Both: "Failed to get Fabric token from SP credentials"
-
-The SP credentials may be invalid. Contact the admin to verify:
-- `fabric-sp-tenant-id`
-- `fabric-sp-client-id`
-- `fabric-sp-client-secret`
-
-### Both: Table not found
-
-Table names are case-insensitive. Try:
-
-```r
-# R
-tables <- list_tables(conn)
-grep("fitbit", tables, ignore.case = TRUE)
-```
+Then verify:
 
 ```python
-# Python
-tables = lh.list_tables()
-print([t for t in tables if "fitbit" in t.lower()])
+import fabricpy
+print(fabricpy.__file__)
+print(hasattr(fabricpy, "connect_to_fabric_sql"))
 ```
 
-### Both: Query is slow
+### HTTP 401 from `FabricLakehouse/list_tables`
 
-Large tables (like `fitbitdailydata`) may take time. Use filters:
+That is the older OneLake delegated-token path. For personal-laptop Key Vault + service-principal access, use `connect_to_fabric_sql()`.
 
-```r
-# R (Windows — SQL)
-df <- DBI::dbGetQuery(conn, "
-  SELECT * FROM fitbitdailydata
-  WHERE participantidentifier = 'P-AKU-11-22'
-  AND date >= '2023-01-01'
-")
+### Browser Login Does Not Open
+
+Wait for the device-code prompt, then use `https://login.microsoft.com/device`.
+
+### Microsoft Authenticator Shows No Code
+
+This usually indicates an account/tenant/MFA provisioning issue rather than a Python or Mac issue. Confirm:
+
+- The researcher is added as a guest/user in the AKU tenant.
+- The account can complete MFA for tenant `4fde8ff3-4dd5-42e1-a25a-e42905610d66`.
+- Conditional Access allows the user's MFA method.
+- The researcher has Key Vault RBAC access.
+
+### Key Vault Forbidden
+
+Ask the admin to confirm the user has the `Key Vault Secrets User` role on the UZIMA Key Vault.
+
+### ODBC Driver Error
+
+Install Microsoft ODBC Driver 18 for SQL Server.
+
+Mac also needs `unixODBC`, commonly installed with Homebrew:
+
+```bash
+brew install unixodbc
 ```
 
-```python
-# Python
-df = lh.sql("""
-  SELECT * FROM fitbitdailydata
-  WHERE participantidentifier = 'P-AKU-11-22'
-  AND date >= '2023-01-01'
-""").to_pandas()
-```
+### Fabric SQL Login Fails
 
-### Mac: First connect is slow
+Ask the admin to confirm the service principal has read access to the required Fabric workspace/lakehouse/SQL endpoint.
 
-First connect may take 10-15 seconds as it authenticates to Key Vault and fetches SP credentials. Subsequent connects are faster.
+## Security Notes
+
+- Do not print or save Key Vault secret values.
+- Do not put service-principal credentials in notebooks.
+- Use read-only Fabric permissions for the service principal.
+- Rotate the service-principal secret before expiry.
+- Review Key Vault audit logs for secret access.
 
 ---
 
-## Quick Reference Card
-
-### R
-
-```r
-library(fabriconnect)
-
-# Connect
-conn <- connect_to_fabric(auth = "sp_vault")
-conn_hcw <- connect_to_fabric(auth = "sp_vault", lakehouse_name = "HCW_fitbit_data")
-
-# List tables
-list_tables(conn)
-list_tables(conn_hcw)
-
-# Read table
-df <- read_table(conn, "dimenrolledparticipants")
-
-# SQL query (Windows only)
-df <- DBI::dbGetQuery(conn, "SELECT * FROM dimenrolledparticipants")
-
-# Disconnect
-DBI::dbDisconnect(conn)
-DBI::dbDisconnect(conn_hcw)
-```
-
-### Python
-
-```python
-from fabricpy import FabricLakehouse
-
-# Connect
-lh = FabricLakehouse()
-lh_hcw = FabricLakehouse(lakehouse="HCW_fitbit_data")
-
-# List tables
-print(lh.list_tables())
-print(lh_hcw.list_tables())
-
-# Read table
-df = lh.read_table("dimenrolledparticipants").to_pandas()
-print(df.head())
-
-# SQL query
-df = lh.sql("SELECT * FROM dimenrolledparticipants").to_pandas()
-print(df.head())
-
-# No explicit disconnect needed
-```
-
----
-
-## Support
-
-If you have questions or encounter issues:
-
-1. Check the troubleshooting section above
-2. Email Derick Imbati: derick.imbati@aku.edu
-3. Include the error message and what you were trying to do
-
----
-
-*Document version 1.1 — July 2026*
+*Document version 1.2 - July 2026*
