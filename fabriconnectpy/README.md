@@ -22,7 +22,7 @@ py -3 -m venv .venv
 
 ## Service Principal SQL Access
 
-Approved researchers can connect from personal laptops through Azure Key Vault. Python signs in interactively when `connect_to_fabric_sql()` is first called: browser login first, then a device-code prompt if the browser login times out.
+Approved researchers can connect from personal laptops through Azure Key Vault. Python signs in interactively when `connect_to_fabric_sql()` is first called: browser login first, then a device-code prompt if the browser login times out. Call it once, reuse the same `conn` for all reads/queries, then close it once in `finally`.
 
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql

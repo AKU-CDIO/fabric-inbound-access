@@ -63,7 +63,7 @@ python3 -m venv .venv
 ./.venv/bin/python -c "from fabricpy import connect_to_fabric_sql; print('fabricpy SP SQL import OK')"
 ```
 
-Then connect:
+Then connect. Call `connect_to_fabric_sql()` once, run all reads/queries with that same `conn`, then close it once in `finally`. Do not reconnect for each query, because that can trigger repeated browser/device-code authentication:
 
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql

@@ -86,24 +86,53 @@ FabricLakehouse.cross_query(
 
 ## Service Principal Access via Key Vault
 
-For approved researchers on personal laptops, this repo also supports the Key Vault service-principal flow shown in the access diagram. Researchers authenticate to Azure AD/MFA, retrieve SP credentials from Azure Key Vault, and connect to Fabric SQL.
+For approved researchers on personal laptops, use the Key Vault service-principal SQL flow. Install Python into a dedicated `.venv`; do not install into Anaconda `base` or another shared environment.
 
-Python:
+Windows PowerShell install:
 
-```python
-from fabricpy import connect_to_fabric_sql, read_sql_table
-conn = connect_to_fabric_sql()
-df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
-conn.close()
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
 ```
 
-R:
+macOS/Linux install:
+
+```bash
+python3 -m venv .venv
+./.venv/bin/python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+```
+
+Python usage: authenticate once, reuse the same `conn` for all reads/queries, and close it once at the end.
+
+```python
+from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
+
+conn = connect_to_fabric_sql()
+try:
+    tables = list_sql_tables(conn)
+    print(tables[:10])
+
+    df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
+    print(df.head())
+
+    summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+    print(summary)
+finally:
+    conn.close()
+```
+
+R usage follows the same pattern: connect once, run all reads/queries, then disconnect once.
 
 ```r
 library(fabriconnect)
 con <- connect_to_fabric_sql()
-read_table(con, "dbo.dimenrolledparticipants")
-DBI::dbDisconnect(con)
+tryCatch({
+  list_tables(con)
+  read_table(con, "dbo.dimenrolledparticipants")
+  query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+}, finally = {
+  DBI::dbDisconnect(con)
+})
 ```
 
 See [docs/FABRIC_SP_ACCESS_SETUP.md](docs/FABRIC_SP_ACCESS_SETUP.md) for setup, admin RBAC, and troubleshooting.
@@ -316,10 +345,11 @@ remotes::install_github(
 ### Python
 
 ```bash
-pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
 ```
 
-> **Note:** On the approved VM, both packages are pre-installed and pre-configured.
+> **Note:** For personal laptops, install Python into a dedicated `.venv`; do not install into Anaconda `base`. On the approved VM, both packages are pre-installed and pre-configured.
 
 ## For Administrators
 

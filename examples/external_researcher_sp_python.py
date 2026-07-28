@@ -3,9 +3,10 @@ External Researcher Example: Fabric SQL via Azure Key Vault service principal
 
 Prerequisites:
   1. Your account has Key Vault Secrets User access on uzima-secrets-xfmh
-  2. Run: az login --tenant 4fde8ff3-4dd5-42e1-a25a-e42905610d66
-  3. Install: pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
+  2. Create a dedicated .venv; do not install into Anaconda base
+  3. Install: python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
   4. Install Microsoft ODBC Driver 18 for SQL Server
+  5. This script authenticates once in connect_to_fabric_sql(), reuses conn, then closes it
 """
 
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
