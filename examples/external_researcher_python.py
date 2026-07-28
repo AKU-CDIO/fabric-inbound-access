@@ -1,69 +1,43 @@
 """
-External Researcher Example: UZIMA Fabric Data Access
+External Researcher Example: Fabric SQL via Azure Key Vault service principal
+
+Use this personal-laptop flow for approved researchers. It authenticates once to
+Azure Key Vault, opens one Fabric SQL connection, reuses that connection for all
+reads/queries, then closes it once.
 
 Prerequisites:
-  1. Your email must be added to the whitelist by the admin
-  2. Run once: setx FABRIC_RESEARCHER_EMAIL your.email@umich.edu
-  3. Install: pip install "fabricpy[pandas,sql] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --force-reinstall --no-cache-dir
+  1. Your account has Key Vault Secrets User access on uzima-secrets-xfmh
+  2. Create a dedicated .venv; do not install into Anaconda base
+  3. Install: python -m pip install "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --no-cache-dir
+  4. Install Microsoft ODBC Driver 18 for SQL Server
 """
 
-import os
-from fabricpy import FabricLakehouse
+from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
 
-# The package reads your email from the environment variable
-email = os.environ.get("FABRIC_RESEARCHER_EMAIL")
-if not email:
-    print("ERROR: Set FABRIC_RESEARCHER_EMAIL first:")
-    print("  setx FABRIC_RESEARCHER_EMAIL your.email@umich.edu")
-    print("  Then restart this terminal.")
-    exit(1)
+print("UZIMA researcher Fabric SQL example starting...", flush=True)
+print("Authenticating once and opening one SQL connection...", flush=True)
 
-print(f"Connecting as {email}...")
-
-# Connect — the package automatically calls the token broker webhook
-lh = FabricLakehouse()
-
-# List all available tables
-tables = lh.list_tables()
-print(f"\nFound {len(tables)} tables:")
-for t in tables[:10]:
-    print(f"  - {t}")
-if len(tables) > 10:
-    print(f"  ... and {len(tables) - 10} more")
-
-# Read a table as pandas DataFrame
-print("\nReading dimenrolledparticipants (first 5 rows)...")
-df = lh.to_pandas("dimenrolledparticipants", columns=["ParticipantIdentifier", "Gender", "Age"])
-print(df.head())
-print(f"\nShape: {df.shape}")
-
-# SQL query across tables (requires duckdb)
-print("\nRunning SQL query...")
+conn = connect_to_fabric_sql()
 try:
-    result = lh.sql("SELECT COUNT(*) cnt FROM dimenrolledparticipants")
-    print(result)
-except Exception as e:
-    print(f"  Skipped: {e}")
-    print("  (Install duckdb for SQL support: pip install duckdb)")
+    tables = list_sql_tables(conn)
+    print(f"Found {len(tables)} tables:")
+    for table in tables[:10]:
+        print(f"  - {table}")
+    if len(tables) > 10:
+        print(f"  ... and {len(tables) - 10} more")
 
-# Work with a different lakehouse
-print("\nSwitching to HCW_fitbit_data...")
-hcw = FabricLakehouse(lakehouse="HCW_fitbit_data")
-hcw_tables = hcw.list_tables()
-print(f"Found {len(hcw_tables)} tables in HCW_fitbit_data:")
-for t in hcw_tables[:5]:
-    print(f"  - {t}")
+    print("\nTop participants:")
+    participants = read_sql_table(
+        conn,
+        "dbo.dimenrolledparticipants",
+        columns=["ParticipantIdentifier", "Gender", "Age"],
+        top=10,
+    )
+    print(participants.head())
 
-# Cross-lakehouse SQL query
-if len(tables) > 0 and len(hcw_tables) > 0:
-    print("\nCross-lakehouse query (requires duckdb)...")
-    try:
-        result = FabricLakehouse.cross_query(
-            {"uzima": lh, "hcw": hcw},
-            """SELECT p.ParticipantIdentifier, p.Gender
-               FROM uzima.dimenrolledparticipants p
-               LIMIT 5"""
-        )
-        print(result)
-    except Exception as e:
-        print(f"  Skipped: {e}")
+    print("\nParticipant count:")
+    summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+    print(summary)
+finally:
+    conn.close()
+    print("Connection closed.", flush=True)

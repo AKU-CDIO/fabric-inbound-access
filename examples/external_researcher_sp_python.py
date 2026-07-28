@@ -35,3 +35,4 @@ try:
     print(query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants"))
 finally:
     conn.close()
+    print("Connection closed.", flush=True)
