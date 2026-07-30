@@ -22,6 +22,8 @@ flowchart LR
 
 Secrets are never committed to this repository and are not written to the researcher laptop. Access is controlled by Key Vault RBAC and the service principal's Fabric permissions.
 
+Package guardrails reduce mistakes: the Python package does not cache the service-principal secret, clears the temporary secret value after minting the SQL token, uses `ApplicationIntent=ReadOnly`, and blocks non-SELECT statements through `query_sql()`. R also uses `ApplicationIntent=ReadOnly` and blocks non-SELECT statements through `query_sql()`. These are guardrails, not the security boundary; enforce read-only access in Fabric and Key Vault RBAC.
+
 ## Azure Resources
 
 | Resource | Value |

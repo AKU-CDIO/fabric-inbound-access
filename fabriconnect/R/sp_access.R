@@ -45,6 +45,7 @@ connect_to_fabric_sql <- function(
     Encrypt = "yes",
     TrustServerCertificate = "no",
     Timeout = timeout,
+    ApplicationIntent = "ReadOnly",
     attributes = .sql_access_token_attribute(token)
   )
 }
@@ -70,6 +71,7 @@ list_sql_tables <- function(conn) {
 #' @return A data.frame.
 #' @export
 query_sql <- function(conn, sql) {
+  .ensure_read_only_sql(sql)
   DBI::dbGetQuery(conn, sql)
 }
 
@@ -89,7 +91,36 @@ read_sql_table <- function(conn, table_name, columns = NULL, top = NULL) {
   top_clause <- ""
   if (!is.null(top)) top_clause <- paste0("TOP ", as.integer(top), " ")
   sql <- sprintf("SELECT %s%s FROM %s", top_clause, cols, .format_sql_table_name(table_name))
-  DBI::dbGetQuery(conn, sql)
+  query_sql(conn, sql)
+}
+
+#' @noRd
+.sql_without_literals_and_comments <- function(sql) {
+  sql <- paste(sql, collapse = "\n")
+  sql <- gsub("/\\*.*?\\*/", " ", sql, perl = TRUE)
+  sql <- gsub("--[^\\r\\n]*", " ", sql, perl = TRUE)
+  sql <- gsub("'(?:''|[^'])*'", "''", sql, perl = TRUE)
+  sql
+}
+
+#' @noRd
+.ensure_read_only_sql <- function(sql) {
+  cleaned <- .sql_without_literals_and_comments(sql)
+  if (!grepl("^\\s*(?:\\(\\s*)*[[:alpha:]_]", cleaned, perl = TRUE)) {
+    stop("Only read-only SELECT queries are allowed by default.", call. = FALSE)
+  }
+  keyword <- tolower(sub("^\\s*(?:\\(\\s*)*([[:alpha:]_][[:alnum:]_]*).*", "\\1", cleaned, perl = TRUE))
+  if (!keyword %in% c("select", "with")) {
+    stop("Only read-only SELECT queries are allowed by default.", call. = FALSE)
+  }
+  blocked <- c(
+    "alter", "backup", "create", "delete", "deny", "drop", "exec", "execute",
+    "grant", "insert", "into", "merge", "restore", "revoke", "truncate", "update"
+  )
+  pattern <- paste0("\\b(", paste(blocked, collapse = "|"), ")\\b")
+  if (grepl(pattern, cleaned, ignore.case = TRUE, perl = TRUE)) {
+    stop("Only read-only SELECT queries are allowed by default.", call. = FALSE)
+  }
 }
 
 #' @noRd

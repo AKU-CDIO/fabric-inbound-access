@@ -9,6 +9,7 @@ import webbrowser
 import time
 import urllib.parse
 import struct
+import re
 
 _CONFIG = None
 
@@ -29,7 +30,6 @@ SQL_ACCESS_TOKEN_ATTR = 1256
 
 _TOKEN_CACHE = {}
 _KEYVAULT_CREDENTIAL_CACHE = {}
-_SERVICE_PRINCIPAL_CACHE = {}
 TOKEN_REFRESH_BUFFER_SECONDS = 300
 
 def _now():
@@ -349,25 +349,12 @@ def _get_service_principal_from_keyvault(sql_cfg, auth_method=None):
 
     credential = _get_keyvault_credential(sql_cfg["keyvault_tenant"], auth_method)
     names = sql_cfg["secret_names"]
-    cache_key = (
-        sql_cfg["vault_url"],
-        sql_cfg["keyvault_tenant"],
-        names["tenant_id"],
-        names["client_id"],
-        names["client_secret"],
-    )
-    cached = _SERVICE_PRINCIPAL_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
-
     client = SecretClient(vault_url=sql_cfg["vault_url"], credential=credential)
-    sp = {
+    return {
         "tenant_id": client.get_secret(names["tenant_id"]).value,
         "client_id": client.get_secret(names["client_id"]).value,
         "client_secret": client.get_secret(names["client_secret"]).value,
     }
-    _SERVICE_PRINCIPAL_CACHE[cache_key] = sp
-    return sp
 
 
 def _get_fabric_sql_token(sp):
@@ -396,6 +383,7 @@ def _build_sql_connection_string(server, database, odbc_driver):
         f"Database={database};"
         "Encrypt=yes;"
         "TrustServerCertificate=no;"
+        "ApplicationIntent=ReadOnly;"
     )
 
 def _quote_sql_identifier(identifier):
@@ -431,7 +419,10 @@ def connect_to_fabric_sql(database=None, server=None, vault_url=None,
     sql_cfg = _get_sql_access_config(database, server, vault_url, keyvault_tenant)
     _require_sql_config(sql_cfg)
     sp = _get_service_principal_from_keyvault(sql_cfg, keyvault_auth_method)
-    token = _get_fabric_sql_token(sp)
+    try:
+        token = _get_fabric_sql_token(sp)
+    finally:
+        sp["client_secret"] = None
     conn_str = _build_sql_connection_string(
         sql_cfg["server"], sql_cfg["database"], odbc_driver
     )
@@ -452,10 +443,33 @@ def list_sql_tables(conn):
     )
     return [f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}" for row in df.itertuples(index=False)]
 
+def _sql_without_literals_and_comments(sql):
+    sql = re.sub(r"/\*.*?\*/", " ", str(sql), flags=re.DOTALL)
+    sql = re.sub(r"--[^\r\n]*", " ", sql)
+    sql = re.sub(r"'(?:''|[^'])*'", "''", sql)
+    return sql
+
+
+def _ensure_read_only_sql(sql):
+    cleaned = _sql_without_literals_and_comments(sql)
+    first = re.match(r"\s*(?:\(\s*)*(\w+)", cleaned)
+    if not first or first.group(1).lower() not in {"select", "with"}:
+        raise ValueError("Only read-only SELECT queries are allowed by default.")
+    blocked = (
+        "alter", "backup", "create", "delete", "deny", "drop", "exec", "execute",
+        "grant", "insert", "into", "merge", "restore", "revoke", "truncate", "update",
+    )
+    pattern = r"\b(" + "|".join(blocked) + r")\b"
+    if re.search(pattern, cleaned, flags=re.IGNORECASE):
+        raise ValueError("Only read-only SELECT queries are allowed by default.")
+
+
 def query_sql(conn, sql):
     """Run SQL against a Fabric SQL pyodbc connection and return a DataFrame."""
+    _ensure_read_only_sql(sql)
     import pandas as pd
     return pd.read_sql_query(sql, conn)
+
 
 def read_sql_table(conn, table_name, columns=None, top=None):
     """Read a Fabric SQL table into a pandas DataFrame."""

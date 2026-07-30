@@ -235,9 +235,17 @@ Ask the admin to confirm the service principal has read access to the required F
 
 ## Security Notes
 
-- Do not print or save Key Vault secret values.
-- Do not put service-principal credentials in notebooks.
-- Use read-only Fabric permissions for the service principal.
+Package-side guardrails:
+
+- The package does not print Key Vault secret values.
+- Service-principal values are retrieved at runtime and are not written to notebooks or local files.
+- Python does not cache the service-principal secret; it clears the temporary secret value after minting the Fabric SQL token.
+- Python and R SQL helpers allow only read-only `SELECT` queries and set `ApplicationIntent=ReadOnly` on the SQL connection.
+
+Azure/Fabric controls that must be enforced by admins:
+
+- Assign the service principal read-only Fabric permissions.
+- Assign researchers only `Key Vault Secrets User` on the required vault scope.
 - Rotate the service-principal secret before expiry.
 - Review Key Vault audit logs for secret access.
 

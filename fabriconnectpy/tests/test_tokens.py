@@ -10,7 +10,7 @@ from fabricpy.client import (
     _get_keyvault_credential,
     _get_service_principal_from_keyvault,
     _KEYVAULT_CREDENTIAL_CACHE,
-    _SERVICE_PRINCIPAL_CACHE,
+    _ensure_read_only_sql,
     _format_sql_table_name,
     _is_usable,
     _needs_refresh,
@@ -84,7 +84,7 @@ class TokenAuthTests(unittest.TestCase):
         self.assertIsInstance(cred, FakeInteractiveBrowserCredential)
         self.assertEqual([kind for kind, _ in calls], ["browser"])
 
-    def test_service_principal_secret_lookup_is_cached(self):
+    def test_service_principal_secret_lookup_is_not_cached(self):
         class FakeCredential:
             pass
 
@@ -115,16 +115,20 @@ class TokenAuthTests(unittest.TestCase):
             },
         }
 
-        _SERVICE_PRINCIPAL_CACHE.clear()
+        FakeSecretClient.calls.clear()
         with patch.dict(sys.modules, {"azure.keyvault.secrets": fake_secrets}):
             with patch("fabricpy.client._get_keyvault_credential", return_value=FakeCredential()):
                 first = _get_service_principal_from_keyvault(sql_cfg)
                 second = _get_service_principal_from_keyvault(sql_cfg)
 
-        self.assertIs(first, second)
+        self.assertIsNot(first, second)
+        self.assertEqual(first["client_secret"], "value-for-password-secret")
         self.assertEqual(
             FakeSecretClient.calls,
-            ["tenant-secret", "client-secret", "password-secret"],
+            [
+                "tenant-secret", "client-secret", "password-secret",
+                "tenant-secret", "client-secret", "password-secret",
+            ],
         )
 
     def test_packs_odbc_access_token_as_utf16_with_length_prefix(self):
@@ -141,11 +145,28 @@ class TokenAuthTests(unittest.TestCase):
         self.assertIn("Driver={ODBC Driver 18 for SQL Server};", conn_str)
         self.assertIn("Server=tcp:example.fabric.microsoft.com,1433;", conn_str)
         self.assertIn("Database=db;", conn_str)
+        self.assertIn("ApplicationIntent=ReadOnly;", conn_str)
 
     def test_formats_schema_qualified_sql_table_names(self):
         self.assertEqual(_format_sql_table_name("people"), "[dbo].[people]")
         self.assertEqual(_format_sql_table_name("dbo.people"), "[dbo].[people]")
         self.assertEqual(_format_sql_table_name("db]o.people"), "[db]]o].[people]")
+
+    def test_read_only_sql_guard_allows_selects(self):
+        _ensure_read_only_sql("SELECT COUNT(*) FROM dbo.people")
+        _ensure_read_only_sql("-- comment\nWITH rows AS (SELECT 1 AS x) SELECT x FROM rows")
+
+    def test_read_only_sql_guard_blocks_mutations(self):
+        blocked = [
+            "DELETE FROM dbo.people",
+            "SELECT * INTO dbo.copy FROM dbo.people",
+            "WITH rows AS (SELECT 1 AS x) UPDATE dbo.people SET x = 1",
+            "EXEC dbo.refresh_data",
+        ]
+        for sql in blocked:
+            with self.subTest(sql=sql):
+                with self.assertRaisesRegex(ValueError, "read-only SELECT"):
+                    _ensure_read_only_sql(sql)
 
 
 if __name__ == "__main__":
