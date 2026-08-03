@@ -1,153 +1,67 @@
-# UZIMA Fabric Data Access - External Researcher Setup Guide
+# UZIMA Fabric Data Access - External Researcher Guide
 
-**Version:** 1.2
-**Date:** July 2026
+**Version:** 1.3
+**Date:** August 2026
 **Contact:** Derick Imbati - derick.imbati@aku.edu
 
 ---
 
-## Overview
+## 1. What This Guide Is For
 
-This guide explains how approved external researchers can access UZIMA study data from Microsoft Fabric on a personal Windows or Mac computer. The supported personal-laptop path is:
+This guide is for approved external researchers who need to access UZIMA Microsoft Fabric data from a personal Windows or Mac computer.
 
-1. Sign in interactively to the AKU Azure tenant.
-2. Retrieve service-principal credentials from Azure Key Vault.
-3. Use the service principal to connect to the Microsoft Fabric SQL endpoint.
-4. Query only the authorized Fabric data.
+The access flow is:
 
-No service-principal secret should be saved in notebooks, scripts, or local files.
+1. Open RStudio on your personal computer.
+2. Install the UZIMA R package directly from GitHub.
+3. Sign in interactively with your approved account.
+4. The package retrieves service-principal credentials from Azure Key Vault.
+5. The package connects to the Microsoft Fabric SQL endpoint.
+6. You list tables, read tables, or run read-only SQL queries.
+7. You close the connection when finished.
 
-## What You Need
+You do not need to run `az login`. You should not save or paste service-principal credentials anywhere.
 
-- Windows or Mac computer
-- Internet connection
-- Python 3.10+
-- Microsoft ODBC Driver 18 for SQL Server
-- For Mac: `unixODBC` is also required
-- An approved account added to the AKU tenant and granted Key Vault access
+## 2. Before You Start
 
-## Install Python Package
+Confirm these items before installing the package.
 
-Install or update the Fabric package directly with pip into your Python user site; no virtual environment is required.
+### Account Access
 
-### Windows PowerShell
+You need an approved account that has been added to the AKU Azure tenant and granted access to the UZIMA Key Vault.
 
-```powershell
-py -3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
-```
-
-If `py` is not available, use `python` instead:
-
-```powershell
-python -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
-```
-
-### Mac Terminal
-
-```bash
-python3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
-```
-
-This installs the Fabric package plus the SQL/Key Vault dependencies: `pandas`, `pyodbc`, `azure-identity`, and `azure-keyvault-secrets`.
-
-## Connect to Fabric SQL
-
-Authenticate once by calling `connect_to_fabric_sql()`. Keep that same `conn` open while you list tables, read tables, and run SQL. Close it with `conn.close()` when finished. Do not call `connect_to_fabric_sql()` again for each query, because that can trigger repeated authentication.
-
-```python
-from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
-
-conn = connect_to_fabric_sql()
-
-tables = list_sql_tables(conn)
-print(tables)
-
-df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
-print(df.head())
-
-summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
-print(summary)
-
-conn.close()
-```
-
-## Authentication Behavior
-
-`connect_to_fabric_sql()` authenticates interactively to Key Vault.
-
-- By default it opens the Microsoft sign-in page for Key Vault login and prints a device code.
-- Complete the browser sign-in with the approved account.
-- Complete MFA with the method enabled for your account.
-
-Optional device-code prompt:
-
-```text
-SIGN IN REQUIRED
-Open: https://login.microsoft.com/device
-Code: XXXXXXXX
-```
-
-Tenant used for Key Vault login:
+The Key Vault sign-in tenant is:
 
 ```text
 4fde8ff3-4dd5-42e1-a25a-e42905610d66
 ```
 
-## Common Queries
+### Software
 
-Run these examples while the same `conn` from the previous section is still open. When finished, run `conn.close()`.
+You need:
 
-### List Tables
+- R 4.1 or later
+- RStudio
+- Microsoft ODBC Driver 18 for SQL Server
+- Internet access
 
-```python
-tables = list_sql_tables(conn)
-print(tables)
+Mac users also need `unixODBC`.
+
+Install it with Homebrew:
+
+```bash
+brew install unixodbc
 ```
 
-### Read Selected Columns
+## 3. Install The R Package
 
-```python
-df = read_sql_table(
-    conn,
-    "dbo.dimenrolledparticipants",
-    columns=["ParticipantIdentifier", "Gender", "Age"],
-    top=100,
-)
-print(df.head())
-```
+Open RStudio.
 
-### Filter With SQL
-
-```python
-df = query_sql(conn, """
-    SELECT ParticipantIdentifier, Gender, Age
-    FROM dbo.dimenrolledparticipants
-    WHERE Gender = 'Female'
-""")
-print(df.head())
-```
-
-### Large Tables
-
-Use `TOP`, selected columns, and filters before loading data into pandas:
-
-```python
-df = query_sql(conn, """
-    SELECT TOP 100 ParticipantIdentifier, date, steps
-    FROM dbo.factfitbitdailydata
-    WHERE date >= '2023-01-01'
-""")
-print(df.head())
-```
-
-## R Users
-
-R service-principal SQL access authenticates interactively to Key Vault by default. On first connect, R opens a browser/device-code prompt; no `az login` command is required.
-
-If R reports `unused argument (keyvault_auth_method = ...)`, restart RStudio and reinstall the package from GitHub. That error means an older `fabriconnect` namespace is still loaded.
+In the Console, run these lines once:
 
 ```r
 install.packages(c("DBI", "odbc", "httr", "jsonlite", "dplyr", "remotes"))
+
 remotes::install_github(
   "AKU-CDIO/fabric-inbound-access",
   subdir = "fabriconnect",
@@ -156,69 +70,282 @@ remotes::install_github(
 )
 ```
 
-Then use:
+Restart RStudio after installation.
+
+Then confirm the package version:
+
+```r
+library(fabriconnect)
+packageVersion("fabriconnect")
+```
+
+Expected version:
+
+```text
+0.1.1
+```
+
+## 4. Connect To The Default UZIMA Lakehouse
+
+The default database/lakehouse is:
+
+```text
+uzima_db_backup
+```
+
+Run this in RStudio:
 
 ```r
 library(fabriconnect)
 
 con <- connect_to_fabric_sql(auth = "sp_vault")
-list_tables(con)
-df <- read_table(con, "dbo.dimenrolledparticipants")
+```
+
+A Microsoft sign-in page should open. Complete the sign-in with your approved account and complete MFA.
+
+If the browser does not open automatically, RStudio will print a device-code message similar to this:
+
+```text
+SIGN IN REQUIRED
+Open: https://login.microsoft.com/device
+Code: XXXXXXXX
+```
+
+Open the printed URL in your browser and enter the printed code.
+
+Keep the same `con` object open while you work. Do not call `connect_to_fabric_sql()` again for every table or query, because that can ask you to authenticate again.
+
+## 5. List Available Tables
+
+After the connection succeeds, list the tables:
+
+```r
+tables <- list_tables(con)
+print(tables)
+```
+
+Table names may include a schema such as `dbo`. Use the full name when reading a table, for example `dbo.dimenrolledparticipants`.
+
+## 6. Read A Small Table Sample
+
+Start with a small sample before loading a large table.
+
+```r
+participants <- read_table(
+  con,
+  "dbo.dimenrolledparticipants",
+  columns = c("ParticipantIdentifier", "Gender", "Age")
+)
+
+print(head(participants))
+```
+
+## 7. Run A Read-Only SQL Query
+
+Use `query_tables()` for SQL queries.
+
+```r
+participant_count <- query_tables(
+  con,
+  "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants"
+)
+
+print(participant_count)
+```
+
+Only read-only `SELECT` queries are allowed by the package helpers.
+
+## 8. Work With Large Tables Safely
+
+For large tables, select only the columns you need and filter before loading data into R.
+
+```r
+fitbit_sample <- query_tables(con, "
+  SELECT TOP 100
+    ParticipantIdentifier,
+    date,
+    steps
+  FROM dbo.factfitbitdailydata
+  WHERE date >= '2023-01-01'
+")
+
+print(head(fitbit_sample))
+```
+
+## 9. Connect To A Different Lakehouse Or Database
+
+Use the `database` argument when you need a different lakehouse/database.
+
+Available options include:
+
+| Database | Use For |
+|---|---|
+| `uzima_db_backup` | Main UZIMA data, participants, surveys, Fitbit facts |
+| `HCW_fitbit_data` | HCW Fitbit daily data, activity logs, sleep logs, devices, profiles |
+| `Qualtrics` | Qualtrics survey response data |
+
+Close the current connection before switching to a different database.
+
+```r
 DBI::dbDisconnect(con)
 ```
 
-## Troubleshooting
+### Connect To `HCW_fitbit_data`
 
-### ImportError: cannot import name `connect_to_fabric_sql`
+```r
+library(fabriconnect)
 
-You are using an old installed copy of `fabricpy`. Update from GitHub and verify the import:
+con <- connect_to_fabric_sql(database = "HCW_fitbit_data", auth = "sp_vault")
 
-Windows:
+tables <- list_tables(con)
+print(tables)
 
-```powershell
-py -3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
+sleep_sample <- query_tables(con, "
+  SELECT TOP 100
+    participantidentifier,
+    date,
+    totalsleepminutes,
+    efficiency
+  FROM dbo.fitbitsleeplogdetails
+  WHERE totalsleepminutes > 0
+")
+
+print(head(sleep_sample))
+
+DBI::dbDisconnect(con)
 ```
 
-Mac:
+### Connect To `Qualtrics`
 
-```bash
-python3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
+```r
+library(fabriconnect)
+
+con <- connect_to_fabric_sql(database = "Qualtrics", auth = "sp_vault")
+
+tables <- list_tables(con)
+print(tables)
+
+survey_sample <- query_tables(con, "
+  SELECT TOP 100 *
+  FROM dbo.aku_survey_responses_2026
+")
+
+print(head(survey_sample))
+
+DBI::dbDisconnect(con)
 ```
 
-Verify:
+### Return To The Default UZIMA Database
 
-```python
-import fabricpy
-print(fabricpy.__file__)
-print(hasattr(fabricpy, "connect_to_fabric_sql"))
+```r
+library(fabriconnect)
+
+con <- connect_to_fabric_sql(auth = "sp_vault")
+
+tables <- list_tables(con)
+print(tables)
+
+DBI::dbDisconnect(con)
 ```
 
-### HTTP 401 from `FabricLakehouse/list_tables`
+## 10. Complete RStudio Example
 
-That is the older OneLake delegated-token path. For personal-laptop Key Vault + service-principal access, use `connect_to_fabric_sql()`.
+This is the recommended full pattern for day-to-day work:
+
+```r
+library(fabriconnect)
+
+con <- connect_to_fabric_sql(auth = "sp_vault")
+
+tables <- list_tables(con)
+print(tables)
+
+participants <- read_table(
+  con,
+  "dbo.dimenrolledparticipants",
+  columns = c("ParticipantIdentifier", "Gender", "Age")
+)
+print(head(participants))
+
+participant_count <- query_tables(
+  con,
+  "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants"
+)
+print(participant_count)
+
+DBI::dbDisconnect(con)
+```
+
+## 11. Important Working Rules
+
+- Connect once at the start of your script.
+- Reuse the same `con` object for all reads and queries.
+- Disconnect once at the end with `DBI::dbDisconnect(con)`.
+- Do not call `connect_to_fabric_sql()` before every query.
+- Do not print, save, or share Key Vault secret values.
+- Do not put service-principal credentials in notebooks or scripts.
+- Use selected columns, `TOP`, and `WHERE` filters for large tables.
+
+## 12. Troubleshooting
+
+### `unused argument (keyvault_auth_method = ...)`
+
+RStudio is using an old loaded version of `fabriconnect`.
+
+Restart RStudio and reinstall from GitHub:
+
+```r
+remove.packages("fabriconnect")
+
+install.packages(c("DBI", "odbc", "httr", "jsonlite", "dplyr", "remotes"))
+
+remotes::install_github(
+  "AKU-CDIO/fabric-inbound-access",
+  subdir = "fabriconnect",
+  force = TRUE,
+  upgrade_dependencies = FALSE
+)
+
+library(fabriconnect)
+packageVersion("fabriconnect")
+```
+
+Expected version:
+
+```text
+0.1.1
+```
+
+Then connect with the simple call:
+
+```r
+con <- connect_to_fabric_sql(auth = "sp_vault")
+```
 
 ### Browser Login Does Not Open
 
-Browser login should open automatically. If it does not, copy the printed `https://login.microsoft.com/device` URL into the default browser and enter the printed code.
+Copy the printed `https://login.microsoft.com/device` URL into your browser and enter the printed code.
 
 ### Microsoft Authenticator Shows No Code
 
-This usually indicates an account/tenant/MFA provisioning issue rather than a Python or Mac issue. Confirm:
+This is usually an account, tenant, or MFA provisioning issue rather than a Mac or RStudio issue.
 
-- The researcher is added as a guest/user in the AKU tenant.
-- The account can complete MFA for tenant `4fde8ff3-4dd5-42e1-a25a-e42905610d66`.
-- Conditional Access allows the user's MFA method.
-- The researcher has Key Vault RBAC access.
+Ask the AKU admin to confirm:
+
+- Your account exists in the AKU tenant.
+- Your account can complete MFA for tenant `4fde8ff3-4dd5-42e1-a25a-e42905610d66`.
+- Your MFA method is allowed by Conditional Access.
+- Your account has Key Vault access.
 
 ### Key Vault Forbidden
 
-Ask the admin to confirm the user has the `Key Vault Secrets User` role on the UZIMA Key Vault.
+Ask the admin to confirm you have the `Key Vault Secrets User` role on the UZIMA Key Vault.
 
 ### ODBC Driver Error
 
 Install Microsoft ODBC Driver 18 for SQL Server.
 
-Mac also needs `unixODBC`, commonly installed with Homebrew:
+Mac users should also install `unixODBC`:
 
 ```bash
 brew install unixodbc
@@ -226,24 +353,24 @@ brew install unixodbc
 
 ### Fabric SQL Login Fails
 
-Ask the admin to confirm the service principal has read access to the required Fabric workspace/lakehouse/SQL endpoint.
+Ask the admin to confirm the service principal has read access to the required Fabric workspace and lakehouse/database.
 
-## Security Notes
+### A Table Name Fails
 
-Package-side guardrails:
+Run `list_tables(con)` first and copy the exact table name from the output. If the table includes `dbo.`, include `dbo.` in your query or `read_table()` call.
 
-- The package does not print Key Vault secret values.
-- Service-principal values are retrieved at runtime and are not written to notebooks or local files.
-- Python does not cache the service-principal secret; it clears the temporary secret value after minting the Fabric SQL token.
-- Python and R SQL helpers allow only read-only `SELECT` queries and set `ApplicationIntent=ReadOnly` on the SQL connection.
+## 13. Security Notes
 
-Azure/Fabric controls that must be enforced by admins:
+The package includes these guardrails:
 
-- Assign the service principal read-only Fabric permissions.
-- Assign researchers only `Key Vault Secrets User` on the required vault scope.
-- Rotate the service-principal secret before expiry.
-- Review Key Vault audit logs for secret access.
+- It does not print Key Vault secret values.
+- It retrieves service-principal values at runtime.
+- It does not ask researchers to put credentials in notebooks.
+- It sets `ApplicationIntent=ReadOnly` on the SQL connection.
+- It blocks non-SELECT statements in `query_tables()`.
+
+These package guardrails do not replace Azure/Fabric permissions. Admins must still enforce read-only Fabric access, rotate the service-principal secret before expiry, and review Key Vault audit logs.
 
 ---
 
-*Document version 1.2 - July 2026*
+*Document version 1.3 - August 2026*
