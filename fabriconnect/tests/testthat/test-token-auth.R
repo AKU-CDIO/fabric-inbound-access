@@ -47,3 +47,12 @@ test_that("SQL identifiers are bracket-quoted for service-principal access", {
   expect_identical(fabriconnect:::.format_sql_table_name("dbo.people"), "[dbo].[people]")
   expect_identical(fabriconnect:::.format_sql_table_name("db]o.people"), "[db]]o].[people]")
 })
+test_that("connect_to_fabric_sql requires explicit sp_vault auth", {
+  expect_error(connect_to_fabric_sql(auth = "auto"), "should be .*sp_vault")
+})
+
+test_that("read-only SQL guard blocks mutations", {
+  expect_silent(fabriconnect:::.ensure_read_only_sql("SELECT COUNT(*) FROM dbo.people"))
+  expect_error(fabriconnect:::.ensure_read_only_sql("DELETE FROM dbo.people"), "read-only SELECT")
+  expect_error(fabriconnect:::.ensure_read_only_sql("SELECT * INTO dbo.copy FROM dbo.people"), "read-only SELECT")
+})

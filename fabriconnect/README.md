@@ -64,7 +64,7 @@ az login --tenant 4fde8ff3-4dd5-42e1-a25a-e42905610d66
 
 ```r
 library(fabriconnect)
-con <- connect_to_fabric_sql()
+con <- connect_to_fabric_sql(auth = "sp_vault")
 list_tables(con)
 read_table(con, "dbo.dimenrolledparticipants")
 DBI::dbDisconnect(con)

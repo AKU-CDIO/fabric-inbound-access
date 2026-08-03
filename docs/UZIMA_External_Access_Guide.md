@@ -166,7 +166,7 @@ Then use:
 ```r
 library(fabriconnect)
 
-con <- connect_to_fabric_sql()
+con <- connect_to_fabric_sql(auth = "sp_vault")
 list_tables(con)
 df <- read_table(con, "dbo.dimenrolledparticipants")
 DBI::dbDisconnect(con)

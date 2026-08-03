@@ -9,13 +9,14 @@
 #' @param vault_url Azure Key Vault URL that stores the service-principal secrets.
 #' @param keyvault_tenant Azure AD tenant ID used for Key Vault login.
 #' @param driver ODBC driver name.
+#' @param auth Authentication method. Must be `"sp_vault"` for Key Vault service-principal access.
 #' @param timeout Connection timeout in seconds.
 #'
 #' @return A DBI ODBC connection.
 #'
 #' @examples
 #' \dontrun{
-#' con <- connect_to_fabric_sql()
+#' con <- connect_to_fabric_sql(auth = "sp_vault")
 #' list_tables(con)
 #' read_table(con, "dbo.dimenrolledparticipants")
 #' DBI::dbDisconnect(con)
@@ -27,8 +28,11 @@ connect_to_fabric_sql <- function(
   vault_url = NULL,
   keyvault_tenant = NULL,
   driver = "ODBC Driver 18 for SQL Server",
+  auth = "sp_vault",
   timeout = 30
 ) {
+  auth <- match.arg(auth, choices = "sp_vault")
+
   if (!requireNamespace("odbc", quietly = TRUE)) {
     stop("Package 'odbc' is required. Install with: install.packages('odbc')")
   }

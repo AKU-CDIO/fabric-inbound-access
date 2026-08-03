@@ -123,7 +123,7 @@ R usage follows the same pattern: connect once, run all reads/queries, then disc
 
 ```r
 library(fabriconnect)
-con <- connect_to_fabric_sql()
+con <- connect_to_fabric_sql(auth = "sp_vault")
 list_tables(con)
 read_table(con, "dbo.dimenrolledparticipants")
 query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
