@@ -143,7 +143,7 @@ print(df.head())
 
 ## R Users
 
-R service-principal SQL access is available, but the current R helper uses Azure CLI to obtain the Key Vault token.
+R service-principal SQL access authenticates interactively to Key Vault by default. On first connect, R opens a browser/device-code prompt; no `az login` command is required.
 
 ```r
 install.packages(c("DBI", "odbc", "httr", "jsonlite", "dplyr", "remotes"))
@@ -155,18 +155,12 @@ remotes::install_github(
 )
 ```
 
-Before connecting in R, sign in:
-
-```bash
-az login --tenant 4fde8ff3-4dd5-42e1-a25a-e42905610d66
-```
-
 Then use:
 
 ```r
 library(fabriconnect)
 
-con <- connect_to_fabric_sql(auth = "sp_vault")
+con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
 list_tables(con)
 df <- read_table(con, "dbo.dimenrolledparticipants")
 DBI::dbDisconnect(con)

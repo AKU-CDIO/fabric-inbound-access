@@ -88,18 +88,14 @@ conn.close()
 
 ## R Users
 
-R currently uses Azure CLI to obtain the Key Vault token. Sign in before connecting:
-
-```bash
-az login --tenant 4fde8ff3-4dd5-42e1-a25a-e42905610d66
-```
+R authenticates interactively to Key Vault by default. On first connect, R opens a browser/device-code prompt; no `az login` command is required.
 
 ```r
-install.packages(c("DBI", "odbc", "httr", "jsonlite", "dplyr"))
+install.packages(c("DBI", "odbc", "httr", "jsonlite", "dplyr", "remotes"))
 remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect", force = TRUE, upgrade_dependencies = FALSE)
 
 library(fabriconnect)
-con <- connect_to_fabric_sql(auth = "sp_vault")
+con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
 list_tables(con)
 read_table(con, "dbo.dimenrolledparticipants", columns = c("ParticipantIdentifier", "Gender", "Age"))
 query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")

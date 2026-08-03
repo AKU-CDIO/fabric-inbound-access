@@ -123,7 +123,7 @@ R usage follows the same pattern: connect once, run all reads/queries, then disc
 
 ```r
 library(fabriconnect)
-con <- connect_to_fabric_sql(auth = "sp_vault")
+con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
 list_tables(con)
 read_table(con, "dbo.dimenrolledparticipants")
 query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
@@ -144,89 +144,68 @@ Researchers never need to authenticate. All steps happen automatically in the ba
 
 ## External Access (SP via Key Vault)
 
-For **external researchers** outside the approved VM, use `auth = "sp_vault"`.
+For **external researchers** outside the approved VM, use the Key Vault service-principal SQL flow.
 
-**Works on Windows, Mac, and Linux.** On first connect, Python opens the default browser for Key Vault login. Device-code login is only a fallback when browser login is not possible.
+**Works on Windows and Mac.** On first connect, R opens an interactive browser/device-code prompt for Key Vault login. No `az login` command is required.
 
 ### Prerequisites
 
-1. **R packages** — `processx` (installed automatically)
-2. **Windows only:** Azure CLI + ODBC Driver 18 (for full SQL access)
-3. **Mac / Linux:** No extra installs needed
+1. **R packages** - installed by the setup command below
+2. **Microsoft ODBC Driver 18 for SQL Server**
+3. **Mac only:** `unixODBC`
 
-### Step 1: Connect
+### Step 1: Install
+
+```r
+install.packages(c("DBI", "odbc", "httr", "jsonlite", "dplyr", "remotes"))
+remotes::install_github(
+  "AKU-CDIO/fabric-inbound-access",
+  subdir = "fabriconnect",
+  force = TRUE,
+  upgrade_dependencies = FALSE
+)
+```
+
+### Step 2: Connect
 
 ```r
 library(fabriconnect)
 
-# Default database (uzima_db_backup)
-conn <- connect_to_fabric(auth = "sp_vault")
-
-# Or specify a different database
-conn <- connect_to_fabric(auth = "sp_vault", lakehouse_name = "HCW_fitbit_data")
-conn <- connect_to_fabric(auth = "sp_vault", database = "Qualtrics")
+con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
 ```
 
-### Step 2: List Tables
+### Step 3: List Tables
 
 ```r
-tables <- list_tables(conn)
-tables
-#  [1] "dimenrolledparticipants"    "factfitbitsleeplogs"
-#  [3] "dimsurveyresults"           "dimsurveydictionary"
-#  ...
+tables <- list_tables(con)
+print(tables)
 ```
 
-### Step 3: Read Data
+### Step 4: Read Data
 
 ```r
-# Full table (small tables only)
-df <- read_table(conn, "dimenrolledparticipants")
-head(df)
-
-# Large tables — use SQL LIMIT
-df <- DBI::dbGetQuery(conn, "SELECT TOP 100 * FROM fitbitdailydata")
-
-# Specific columns only
-df <- DBI::dbGetQuery(conn, "
-  SELECT participantidentifier, date, steps, calories
-  FROM fitbitdailydata
-")
-
-# Filtered
-df <- DBI::dbGetQuery(conn, "
-  SELECT * FROM dimenrolledparticipants
-  WHERE Gender = 'Female'
-")
+df <- read_table(con, "dbo.dimenrolledparticipants", columns = c("ParticipantIdentifier", "Gender", "Age"))
+print(head(df))
 ```
 
-### Step 4: SQL Queries
+### Step 5: SQL Queries
 
 ```r
-# Count rows
-DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM dimenrolledparticipants")
+summary <- query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+print(summary)
 
-# Aggregation
-DBI::dbGetQuery(conn, "
-  SELECT Gender, COUNT(*) AS n
-  FROM dimenrolledparticipants
+by_gender <- query_tables(con, "
+  SELECT Gender, COUNT(*) AS total
+  FROM dbo.dimenrolledparticipants
   GROUP BY Gender
 ")
-
-# Cross-database join (SP connection only)
-conn_hcw <- connect_to_fabric(auth = "sp_vault", lakehouse_name = "HCW_fitbit_data")
-df <- DBI::dbGetQuery(conn_hcw, "
-  SELECT p.ParticipantIdentifier, f.date, f.steps
-  FROM uzima_db_backup.dbo.dimenrolledparticipants p
-  JOIN HCW_fitbit_data.dbo.fitbitdailydata f
-    ON p.ParticipantIdentifier = f.participantidentifier
-")
+print(by_gender)
 ```
 
-### Step 5: Disconnect
+### Step 6: Disconnect
 
 ```r
-DBI::dbDisconnect(conn)
+DBI::dbDisconnect(con)
 ```
 
 ### Complete Examples
@@ -235,70 +214,65 @@ DBI::dbDisconnect(conn)
 
 ```r
 library(fabriconnect)
-conn <- connect_to_fabric(auth = "sp_vault")
+con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
 
-df <- DBI::dbGetQuery(conn, "
+df <- query_tables(con, "
   SELECT ParticipantIdentifier, Gender, DateOfBirth, PostalCode
-  FROM dimenrolledparticipants
+  FROM dbo.dimenrolledparticipants
   WHERE Gender IS NOT NULL
 ")
 
 summary(df)
 table(df$Gender)
+DBI::dbDisconnect(con)
 ```
 
 **Example 2: Fitbit sleep analysis**
 
 ```r
-conn <- connect_to_fabric(auth = "sp_vault", lakehouse_name = "HCW_fitbit_data")
+library(fabriconnect)
+con <- connect_to_fabric_sql(database = "HCW_fitbit_data", auth = "sp_vault", keyvault_auth_method = "device_code")
 
-sleep <- DBI::dbGetQuery(conn, "
+sleep <- query_tables(con, "
   SELECT participantidentifier, date, totalsleepminutes, efficiency
-  FROM fitbitsleeplogdetails
+  FROM dbo.fitbitsleeplogdetails
   WHERE totalsleepminutes > 0
 ")
 
-hist(sleep$totalsleepminutes, breaks = 30,
-     main = "Sleep Duration Distribution",
-     xlab = "Minutes")
+summary(sleep$totalsleepminutes)
+DBI::dbDisconnect(con)
 ```
 
-**Example 3: Survey responses**
+**Example 3: Qualtrics survey data**
 
 ```r
-conn <- connect_to_fabric(auth = "sp_vault", database = "Qualtrics")
+library(fabriconnect)
+con <- connect_to_fabric_sql(database = "Qualtrics", auth = "sp_vault", keyvault_auth_method = "device_code")
 
-surveys <- DBI::dbGetQuery(conn, "
+surveys <- query_tables(con, "
   SELECT TOP 100 *
   FROM dbo.aku_survey_responses_2026
 ")
 
-names(surveys)
+head(surveys)
+DBI::dbDisconnect(con)
 ```
 
-**Example 4: Join participants with Fitbit data**
+**Example 4: Join tables**
 
 ```r
-conn <- connect_to_fabric(auth = "sp_vault")
+library(fabriconnect)
+con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
 
-# Get participant list
-participants <- DBI::dbGetQuery(conn, "
-  SELECT ParticipantIdentifier, Gender
-  FROM dimenrolledparticipants
+joined <- query_tables(con, "
+  SELECT p.ParticipantIdentifier, p.Gender, f.date, f.steps
+  FROM dbo.dimenrolledparticipants p
+  JOIN dbo.factfitbitdailydata f
+    ON p.ParticipantIdentifier = f.participantidentifier
 ")
 
-# Get step counts
-steps <- DBI::dbGetQuery(conn, "
-  SELECT participantidentifier, SUM(steps) AS total_steps
-  FROM factfitbitdailydata
-  GROUP BY participantidentifier
-")
-
-# Merge
-df <- merge(participants, steps, by.x = "ParticipantIdentifier",
-            by.y = "participantidentifier", all.x = TRUE)
-
-head(df)
+head(joined)
+DBI::dbDisconnect(con)
 ```
 
 ## Architecture
@@ -368,20 +342,19 @@ Run the test script to verify: `python test_delegated_access.py` or `source("Run
 
 ### A table is very large
 
-Read only the columns you need with the `columns` parameter. This reduces memory and speeds up analysis.
+Read only the columns you need and filter in SQL before loading data into R. This reduces memory and speeds up analysis.
 
 ```r
-# Option 1: columns parameter (OneLake)
-df <- read_table(conn, "fitbitdailydata",
-                 columns = c("participantidentifier", "date", "steps"))
+# Selected columns
+small <- read_table(con, "dbo.factfitbitdailydata", columns = c("participantidentifier", "date", "steps"))
 
-# Option 2: SQL LIMIT (Windows: sp_vault)
-df <- DBI::dbGetQuery(conn, "SELECT TOP 1000 * FROM fitbitdailydata")
+# SQL TOP limit
+limited <- query_tables(con, "SELECT TOP 1000 participantidentifier, date, steps FROM dbo.factfitbitdailydata")
 
-# Option 3: SQL WHERE filter (Windows: sp_vault)
-df <- DBI::dbGetQuery(conn, "
+# SQL WHERE filter
+filtered <- query_tables(con, "
   SELECT participantidentifier, date, steps
-  FROM fitbitdailydata
+  FROM dbo.factfitbitdailydata
   WHERE participantidentifier = 'P-AKU-11-22'
 ")
 ```
@@ -390,7 +363,7 @@ df <- DBI::dbGetQuery(conn, "
 
 Use the full dotted name: `read_table(conn, "dbo.aku_survey_responses_2026")`.
 
-### az login fails
+### Azure CLI login fails (optional VM/admin path)
 
 ```bash
 # Windows — use full path
@@ -400,9 +373,9 @@ Use the full dotted name: `read_table(conn, "dbo.aku_survey_responses_2026")`.
 az login
 ```
 
-### Mac: sp_vault auth opens browser
+### Mac: sp_vault auth opens browser/device-code prompt
 
-This is expected. On first connect, Python opens a browser for Key Vault login. The SP credentials are then used to access Fabric.
+This is expected. On first connect, Python opens a browser for Key Vault login; R opens a browser/device-code prompt when `keyvault_auth_method = "device_code"`. The SP credentials are then used to access Fabric.
 
 ### GitHub install fails with a rate-limit message
 

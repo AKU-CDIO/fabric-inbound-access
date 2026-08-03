@@ -56,15 +56,11 @@ setx FABRIC_WEBHOOK_URL https://a28ba9ca-fccc-4d71-8568-1d6340b357d7.webhook.ne.
 
 ### External researchers (service principal via Key Vault)
 
-Approved researchers can connect from personal laptops using Azure AD/MFA and Azure Key Vault.
-
-```bash
-az login --tenant 4fde8ff3-4dd5-42e1-a25a-e42905610d66
-```
+Approved researchers can connect from personal laptops using Azure AD/MFA and Azure Key Vault. On first connect, R opens a browser/device-code prompt; no `az login` command is required.
 
 ```r
 library(fabriconnect)
-con <- connect_to_fabric_sql(auth = "sp_vault")
+con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
 list_tables(con)
 read_table(con, "dbo.dimenrolledparticipants")
 DBI::dbDisconnect(con)

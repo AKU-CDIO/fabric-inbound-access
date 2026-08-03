@@ -56,3 +56,17 @@ test_that("read-only SQL guard blocks mutations", {
   expect_error(fabriconnect:::.ensure_read_only_sql("DELETE FROM dbo.people"), "read-only SELECT")
   expect_error(fabriconnect:::.ensure_read_only_sql("SELECT * INTO dbo.copy FROM dbo.people"), "read-only SELECT")
 })
+test_that("Key Vault auth method normalizes interactive options", {
+  expect_identical(fabriconnect:::.normalize_keyvault_auth_method(NULL), "device_code")
+  expect_identical(fabriconnect:::.normalize_keyvault_auth_method("device-code"), "device_code")
+  expect_identical(fabriconnect:::.normalize_keyvault_auth_method("cli"), "azure_cli")
+  expect_identical(fabriconnect:::.normalize_keyvault_auth_method("auto"), "auto")
+  expect_error(fabriconnect:::.normalize_keyvault_auth_method("browser"), "keyvault_auth_method")
+})
+
+test_that("connect_to_fabric_sql validates Key Vault auth before dependencies", {
+  expect_error(
+    connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "browser"),
+    "keyvault_auth_method"
+  )
+})

@@ -10,6 +10,7 @@
 #' @param keyvault_tenant Azure AD tenant ID used for Key Vault login.
 #' @param driver ODBC driver name.
 #' @param auth Authentication method. Must be `"sp_vault"` for Key Vault service-principal access.
+#' @param keyvault_auth_method Key Vault login method: `"device_code"` opens an interactive browser/device-code prompt; `"azure_cli"` uses an existing Azure CLI login; `"auto"` tries Azure CLI then device code.
 #' @param timeout Connection timeout in seconds.
 #'
 #' @return A DBI ODBC connection.
@@ -29,16 +30,18 @@ connect_to_fabric_sql <- function(
   keyvault_tenant = NULL,
   driver = "ODBC Driver 18 for SQL Server",
   auth = "sp_vault",
+  keyvault_auth_method = "device_code",
   timeout = 30
 ) {
   auth <- match.arg(auth, choices = "sp_vault")
+  keyvault_auth_method <- .normalize_keyvault_auth_method(keyvault_auth_method)
 
   if (!requireNamespace("odbc", quietly = TRUE)) {
     stop("Package 'odbc' is required. Install with: install.packages('odbc')")
   }
 
   sql_cfg <- .get_sql_access_config(database, server, vault_url, keyvault_tenant)
-  sp <- .get_service_principal_from_keyvault(sql_cfg)
+  sp <- .get_service_principal_from_keyvault(sql_cfg, keyvault_auth_method = keyvault_auth_method)
   token <- .get_fabric_sql_token(sp$tenant_id, sp$client_id, sp$client_secret)
 
   DBI::dbConnect(
@@ -169,17 +172,45 @@ read_sql_table <- function(conn, table_name, columns = NULL, top = NULL) {
 }
 
 #' @noRd
-.get_service_principal_from_keyvault <- function(sql_cfg) {
+.get_service_principal_from_keyvault <- function(sql_cfg, keyvault_auth_method = "device_code") {
+  token <- .get_keyvault_token(sql_cfg$keyvault_tenant, keyvault_auth_method)
   list(
-    tenant_id = .get_keyvault_secret(sql_cfg$vault_url, sql_cfg$keyvault_tenant, sql_cfg$tenant_secret),
-    client_id = .get_keyvault_secret(sql_cfg$vault_url, sql_cfg$keyvault_tenant, sql_cfg$client_id_secret),
-    client_secret = .get_keyvault_secret(sql_cfg$vault_url, sql_cfg$keyvault_tenant, sql_cfg$client_secret_secret)
+    tenant_id = .fetch_keyvault_secret(sql_cfg$vault_url, sql_cfg$tenant_secret, token),
+    client_id = .fetch_keyvault_secret(sql_cfg$vault_url, sql_cfg$client_id_secret, token),
+    client_secret = .fetch_keyvault_secret(sql_cfg$vault_url, sql_cfg$client_secret_secret, token)
   )
 }
 
 #' @noRd
-.get_keyvault_secret <- function(vault_url, tenant, secret_name) {
-  token <- .get_azure_cli_token("https://vault.azure.net", tenant)
+.normalize_keyvault_auth_method <- function(auth_method = NULL) {
+  value <- if (is.null(auth_method) || !nzchar(auth_method)) "device_code" else auth_method
+  value <- tolower(gsub("-", "_", value))
+  aliases <- c(device = "device_code", devicecode = "device_code", device_code = "device_code", azure_cli = "azure_cli", cli = "azure_cli", auto = "auto")
+  if (!value %in% names(aliases)) {
+    stop("keyvault_auth_method must be 'device_code', 'azure_cli', or 'auto'.", call. = FALSE)
+  }
+  unname(aliases[[value]])
+}
+
+#' @noRd
+.get_keyvault_token <- function(tenant, auth_method = "device_code") {
+  auth_method <- .normalize_keyvault_auth_method(auth_method)
+  if (identical(auth_method, "azure_cli")) {
+    return(.get_azure_cli_token("https://vault.azure.net", tenant, required = TRUE))
+  }
+  if (identical(auth_method, "auto")) {
+    token <- .get_azure_cli_token("https://vault.azure.net", tenant, required = FALSE)
+    if (!is.null(token) && nzchar(token)) return(token)
+  }
+  result <- .try_msal_device_code(tenant, "https://vault.azure.net")
+  if (!is.null(result) && !is.null(result$access_token) && nzchar(result$access_token)) {
+    return(result$access_token)
+  }
+  stop("Interactive Key Vault authentication failed. Confirm the account has tenant access, MFA, and Key Vault RBAC.", call. = FALSE)
+}
+
+#' @noRd
+.fetch_keyvault_secret <- function(vault_url, secret_name, token) {
   url <- paste0(sub("/+$", "", vault_url), "/secrets/", utils::URLencode(secret_name, reserved = TRUE), "?api-version=7.4")
   resp <- httr::GET(url, httr::add_headers(Authorization = paste("Bearer", token)))
   httr::stop_for_status(resp)
@@ -187,8 +218,9 @@ read_sql_table <- function(conn, table_name, columns = NULL, top = NULL) {
 }
 
 #' @noRd
-.get_azure_cli_token <- function(resource, tenant) {
-  az <- .az_command()
+.get_azure_cli_token <- function(resource, tenant, required = TRUE) {
+  az <- .az_command(required = required)
+  if (is.null(az)) return(NULL)
   args <- c(
     "account", "get-access-token",
     "--resource", resource,
@@ -199,19 +231,28 @@ read_sql_table <- function(conn, table_name, columns = NULL, top = NULL) {
   raw <- suppressWarnings(system2(az, args, stdout = TRUE, stderr = TRUE))
   status <- attr(raw, "status")
   if (!is.null(status) && status != 0) {
-    stop("Run 'az login --tenant ", tenant, "' first, then retry Fabric SQL access.")
+    if (isTRUE(required)) {
+      stop("Run 'az login --tenant ", tenant, "' first, then retry Fabric SQL access.")
+    }
+    return(NULL)
   }
-  token <- trimws(raw[[1]])
-  if (!nzchar(token)) stop("Azure CLI did not return a Key Vault access token.")
+  token <- if (length(raw)) trimws(raw[[1]]) else ""
+  if (!nzchar(token)) {
+    if (isTRUE(required)) stop("Azure CLI did not return a Key Vault access token.")
+    return(NULL)
+  }
   token
 }
 
 #' @noRd
-.az_command <- function() {
+.az_command <- function(required = TRUE) {
   candidates <- c("az.cmd", "az")
   found <- Sys.which(candidates)
   found <- found[nzchar(found)]
-  if (length(found) == 0) stop("Azure CLI 'az' was not found on PATH.")
+  if (length(found) == 0) {
+    if (isTRUE(required)) stop("Azure CLI 'az' was not found on PATH.")
+    return(NULL)
+  }
   unname(found[[1]])
 }
 
