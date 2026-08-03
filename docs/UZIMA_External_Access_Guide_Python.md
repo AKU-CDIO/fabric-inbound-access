@@ -1,6 +1,6 @@
 # UZIMA Fabric Data Access - Python External Researcher Guide
 
-**Version:** 1.0
+**Version:** 1.1
 **Date:** August 2026
 **Contact:** Derick Imbati - derick.imbati@aku.edu
 
@@ -265,11 +265,26 @@ print(tables)
 conn.close()
 ```
 
-## 11. Complete Python Example
+## 11. Single Python Test Block
 
-This is the recommended full pattern for day-to-day work:
+Use this single Python block to test installation, interactive Key Vault sign-in, table listing, table reading, and a read-only SQL query.
 
 ```python
+import sys
+import subprocess
+
+# Run once if the package is not installed or needs to be updated.
+# subprocess.check_call([
+#     sys.executable,
+#     "-m",
+#     "pip",
+#     "install",
+#     "--user",
+#     "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy",
+#     "--upgrade",
+#     "--no-cache-dir",
+# ])
+
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
 
 conn = connect_to_fabric_sql(auth="sp_vault")
@@ -277,20 +292,23 @@ conn = connect_to_fabric_sql(auth="sp_vault")
 tables = list_sql_tables(conn)
 print(tables)
 
-participants = read_sql_table(
+df = read_sql_table(
     conn,
     "dbo.dimenrolledparticipants",
     columns=["ParticipantIdentifier", "Gender", "Age"],
     top=10,
 )
-print(participants.head())
+print(df.head())
 
-participant_count = query_sql(
-    conn,
-    "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants",
-)
-print(participant_count)
+summary = query_sql(conn, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+print(summary)
 
+# conn.close()
+```
+
+When you are done testing, close the connection:
+
+```python
 conn.close()
 ```
 
@@ -390,4 +408,4 @@ These package guardrails do not replace Azure/Fabric permissions. Admins must st
 
 ---
 
-*Document version 1.0 - August 2026*
+*Document version 1.1 - August 2026*
