@@ -75,10 +75,9 @@ conn.close()
 
 `connect_to_fabric_sql()` authenticates interactively to Key Vault.
 
-- By default it opens a browser for Key Vault login.
+- By default it opens the Microsoft sign-in page for Key Vault login and prints a device code.
 - Complete the browser sign-in with the approved account.
 - Complete MFA with the method enabled for your account.
-- If browser login is not possible, device-code login is available by calling `connect_to_fabric_sql(keyvault_auth_method="device_code")`.
 
 Optional device-code prompt:
 
@@ -145,6 +144,8 @@ print(df.head())
 
 R service-principal SQL access authenticates interactively to Key Vault by default. On first connect, R opens a browser/device-code prompt; no `az login` command is required.
 
+If R reports `unused argument (keyvault_auth_method = ...)`, restart RStudio and reinstall the package from GitHub. That error means an older `fabriconnect` namespace is still loaded.
+
 ```r
 install.packages(c("DBI", "odbc", "httr", "jsonlite", "dplyr", "remotes"))
 remotes::install_github(
@@ -160,7 +161,7 @@ Then use:
 ```r
 library(fabriconnect)
 
-con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
+con <- connect_to_fabric_sql(auth = "sp_vault")
 list_tables(con)
 df <- read_table(con, "dbo.dimenrolledparticipants")
 DBI::dbDisconnect(con)
@@ -198,7 +199,7 @@ That is the older OneLake delegated-token path. For personal-laptop Key Vault + 
 
 ### Browser Login Does Not Open
 
-Browser login should open automatically. If it does not, update the package and use `connect_to_fabric_sql(keyvault_auth_method="device_code")` as a fallback.
+Browser login should open automatically. If it does not, copy the printed `https://login.microsoft.com/device` URL into the default browser and enter the printed code.
 
 ### Microsoft Authenticator Shows No Code
 

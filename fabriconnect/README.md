@@ -60,7 +60,7 @@ Approved researchers can connect from personal laptops using Azure AD/MFA and Az
 
 ```r
 library(fabriconnect)
-con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
+con <- connect_to_fabric_sql(auth = "sp_vault")
 list_tables(con)
 read_table(con, "dbo.dimenrolledparticipants")
 DBI::dbDisconnect(con)

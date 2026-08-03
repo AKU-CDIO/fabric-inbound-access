@@ -123,7 +123,7 @@ R usage follows the same pattern: connect once, run all reads/queries, then disc
 
 ```r
 library(fabriconnect)
-con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
+con <- connect_to_fabric_sql(auth = "sp_vault")
 list_tables(con)
 read_table(con, "dbo.dimenrolledparticipants")
 query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
@@ -171,7 +171,7 @@ remotes::install_github(
 ```r
 library(fabriconnect)
 
-con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
+con <- connect_to_fabric_sql(auth = "sp_vault")
 ```
 
 ### Step 3: List Tables
@@ -214,7 +214,7 @@ DBI::dbDisconnect(con)
 
 ```r
 library(fabriconnect)
-con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
+con <- connect_to_fabric_sql(auth = "sp_vault")
 
 df <- query_tables(con, "
   SELECT ParticipantIdentifier, Gender, DateOfBirth, PostalCode
@@ -231,7 +231,7 @@ DBI::dbDisconnect(con)
 
 ```r
 library(fabriconnect)
-con <- connect_to_fabric_sql(database = "HCW_fitbit_data", auth = "sp_vault", keyvault_auth_method = "device_code")
+con <- connect_to_fabric_sql(database = "HCW_fitbit_data", auth = "sp_vault")
 
 sleep <- query_tables(con, "
   SELECT participantidentifier, date, totalsleepminutes, efficiency
@@ -247,7 +247,7 @@ DBI::dbDisconnect(con)
 
 ```r
 library(fabriconnect)
-con <- connect_to_fabric_sql(database = "Qualtrics", auth = "sp_vault", keyvault_auth_method = "device_code")
+con <- connect_to_fabric_sql(database = "Qualtrics", auth = "sp_vault")
 
 surveys <- query_tables(con, "
   SELECT TOP 100 *
@@ -262,7 +262,7 @@ DBI::dbDisconnect(con)
 
 ```r
 library(fabriconnect)
-con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
+con <- connect_to_fabric_sql(auth = "sp_vault")
 
 joined <- query_tables(con, "
   SELECT p.ParticipantIdentifier, p.Gender, f.date, f.steps

@@ -9,7 +9,7 @@
 
 library(fabriconnect)
 
-con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
+con <- connect_to_fabric_sql(auth = "sp_vault")
 cat("Connected via Key Vault service-principal access.\n\n")
 
 print(head(list_tables(con), 10))

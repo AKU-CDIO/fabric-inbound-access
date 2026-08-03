@@ -90,12 +90,14 @@ conn.close()
 
 R authenticates interactively to Key Vault by default. On first connect, R opens a browser/device-code prompt; no `az login` command is required.
 
+If R reports `unused argument (keyvault_auth_method = ...)`, restart RStudio and reinstall the package from GitHub. That error means an older `fabriconnect` namespace is still loaded.
+
 ```r
 install.packages(c("DBI", "odbc", "httr", "jsonlite", "dplyr", "remotes"))
 remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect", force = TRUE, upgrade_dependencies = FALSE)
 
 library(fabriconnect)
-con <- connect_to_fabric_sql(auth = "sp_vault", keyvault_auth_method = "device_code")
+con <- connect_to_fabric_sql(auth = "sp_vault")
 list_tables(con)
 read_table(con, "dbo.dimenrolledparticipants", columns = c("ParticipantIdentifier", "Gender", "Age"))
 query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")

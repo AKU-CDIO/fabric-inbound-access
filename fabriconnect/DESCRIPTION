@@ -1,6 +1,6 @@
 Package: fabriconnect
 Title: Read Microsoft Fabric Lakehouse Tables via OneLake
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: person("Derick", "Imbati", email = "derick.imbati@aku.edu", role = c("aut", "cre"),
              comment = "CDIO, AKU")
 Author: Derick Imbati [aut, cre]
