@@ -1,6 +1,6 @@
 # UZIMA Fabric Data Access - External Researcher Guide
 
-**Version:** 1.3
+**Version:** 1.4
 **Date:** August 2026
 **Contact:** Derick Imbati - derick.imbati@aku.edu
 
@@ -248,11 +248,14 @@ print(tables)
 DBI::dbDisconnect(con)
 ```
 
-## 10. Complete RStudio Example
+## 10. Single RStudio Test Block
 
-This is the recommended full pattern for day-to-day work:
+Use this single R Markdown chunk to test installation, interactive Key Vault sign-in, table listing, table reading, and a read-only SQL query.
 
-```r
+```{r echo=TRUE}
+#install.packages(c("DBI", "odbc", "httr", "jsonlite", "dplyr", "remotes"))
+remotes::install_github("AKU-CDIO/fabric-inbound-access", subdir = "fabriconnect", force = TRUE, upgrade_dependencies = FALSE)
+
 library(fabriconnect)
 
 con <- connect_to_fabric_sql(auth = "sp_vault")
@@ -260,19 +263,18 @@ con <- connect_to_fabric_sql(auth = "sp_vault")
 tables <- list_tables(con)
 print(tables)
 
-participants <- read_table(
-  con,
-  "dbo.dimenrolledparticipants",
-  columns = c("ParticipantIdentifier", "Gender", "Age")
-)
-print(head(participants))
+df <- read_table(con, "dbo.dimenrolledparticipants", columns = c("ParticipantIdentifier", "Gender", "Age"))
+print(head(df))
 
-participant_count <- query_tables(
-  con,
-  "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants"
-)
-print(participant_count)
+summary <- query_tables(con, "SELECT COUNT(*) AS total FROM dbo.dimenrolledparticipants")
+print(summary)
 
+#DBI::dbDisconnect(con)
+```
+
+When you are done testing, close the connection:
+
+```r
 DBI::dbDisconnect(con)
 ```
 
@@ -373,4 +375,4 @@ These package guardrails do not replace Azure/Fabric permissions. Admins must st
 
 ---
 
-*Document version 1.3 - August 2026*
+*Document version 1.4 - August 2026*
