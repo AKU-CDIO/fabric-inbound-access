@@ -399,15 +399,30 @@ def _format_sql_table_name(table_name):
         raise ValueError("table_name must be 'table' or 'schema.table'")
     return ".".join(_quote_sql_identifier(part) for part in parts)
 
+
+def _normalize_sql_auth(auth=None):
+    value = auth or "sp_vault"
+    value = str(value).strip().lower().replace("-", "_")
+    aliases = {
+        "sp": "sp_vault",
+        "sp_vault": "sp_vault",
+        "service_principal": "sp_vault",
+        "serviceprincipal": "sp_vault",
+    }
+    if value not in aliases:
+        raise ValueError("auth must be 'sp_vault' for Fabric SQL Key Vault access.")
+    return aliases[value]
 def connect_to_fabric_sql(database=None, server=None, vault_url=None,
                           keyvault_tenant=None, odbc_driver="ODBC Driver 18 for SQL Server",
-                          timeout=30, keyvault_auth_method="browser"):
+                          timeout=30, auth="sp_vault", keyvault_auth_method="browser"):
     """Connect to Fabric SQL using SP credentials stored in Azure Key Vault.
 
     Researchers authenticate interactively to the Key Vault tenant. The service
     principal secret is retrieved at runtime and exchanged for a Fabric SQL
     access token. No service-principal secret is written locally.
+    Specify auth="sp_vault" to make the service-principal Key Vault flow explicit.
     """
+    _normalize_sql_auth(auth)
     try:
         import pyodbc
     except ImportError as exc:

@@ -16,6 +16,7 @@ from fabricpy.client import (
     _needs_refresh,
     _normalize_access_token,
     _normalize_keyvault_auth_method,
+    _normalize_sql_auth,
     _pack_odbc_access_token,
     _now,
     _try_env_var_token,
@@ -52,6 +53,14 @@ class TokenAuthTests(unittest.TestCase):
 
         with patch.dict(os.environ, env, clear=True):
             self.assertEqual(_try_env_var_token(), token)
+
+    def test_sql_auth_requires_sp_vault(self):
+        self.assertEqual(_normalize_sql_auth(), "sp_vault")
+        self.assertEqual(_normalize_sql_auth("sp_vault"), "sp_vault")
+        self.assertEqual(_normalize_sql_auth("sp"), "sp_vault")
+        self.assertEqual(_normalize_sql_auth("service-principal"), "sp_vault")
+        with self.assertRaisesRegex(ValueError, "auth must be 'sp_vault'"):
+            _normalize_sql_auth("browser")
 
     def test_keyvault_auth_method_defaults_to_browser(self):
         with patch.dict(os.environ, {"FABRIC_KEYVAULT_AUTH_METHOD": "device_code"}):

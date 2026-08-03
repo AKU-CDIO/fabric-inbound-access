@@ -14,7 +14,7 @@ The access flow is:
 
 1. Open your terminal or Python notebook environment.
 2. Install the UZIMA Python package directly from GitHub.
-3. Start Python and call `connect_to_fabric_sql()`.
+3. Start Python and call `connect_to_fabric_sql(auth="sp_vault")`.
 4. Sign in interactively with your approved account.
 5. The package retrieves service-principal credentials from Azure Key Vault.
 6. The package connects to the Microsoft Fabric SQL endpoint.
@@ -83,10 +83,11 @@ Open Python and run:
 import fabricpy
 
 print(fabricpy.__file__)
+print(fabricpy.__version__)
 print(hasattr(fabricpy, "connect_to_fabric_sql"))
 ```
 
-The second line should print:
+The version should be `0.1.1` or later, and the last line should print:
 
 ```text
 True
@@ -107,7 +108,7 @@ Run this in Python:
 ```python
 from fabricpy import connect_to_fabric_sql
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(auth="sp_vault")
 ```
 
 A Microsoft sign-in page should open. Complete the sign-in with your approved account and complete MFA.
@@ -122,7 +123,7 @@ Code: XXXXXXXX
 
 Open the printed URL in your browser and enter the printed code.
 
-Keep the same `conn` object open while you work. Do not call `connect_to_fabric_sql()` again for every table or query, because that can ask you to authenticate again.
+Keep the same `conn` object open while you work. Do not call `connect_to_fabric_sql(auth="sp_vault")` again for every table or query, because that can ask you to authenticate again.
 
 ## 6. List Available Tables
 
@@ -211,7 +212,7 @@ conn.close()
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql
 
-conn = connect_to_fabric_sql(database="HCW_fitbit_data")
+conn = connect_to_fabric_sql(database="HCW_fitbit_data", auth="sp_vault")
 
 tables = list_sql_tables(conn)
 print(tables)
@@ -236,7 +237,7 @@ conn.close()
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql
 
-conn = connect_to_fabric_sql(database="Qualtrics")
+conn = connect_to_fabric_sql(database="Qualtrics", auth="sp_vault")
 
 tables = list_sql_tables(conn)
 print(tables)
@@ -256,7 +257,7 @@ conn.close()
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(auth="sp_vault")
 
 tables = list_sql_tables(conn)
 print(tables)
@@ -271,7 +272,7 @@ This is the recommended full pattern for day-to-day work:
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(auth="sp_vault")
 
 tables = list_sql_tables(conn)
 print(tables)
@@ -298,7 +299,7 @@ conn.close()
 - Connect once at the start of your script or notebook session.
 - Reuse the same `conn` object for all reads and queries.
 - Close the connection once at the end with `conn.close()`.
-- Do not call `connect_to_fabric_sql()` before every query.
+- Do not call `connect_to_fabric_sql(auth="sp_vault")` before every query.
 - Do not print, save, or share Key Vault secret values.
 - Do not put service-principal credentials in notebooks or scripts.
 - Use selected columns, `TOP`, and `WHERE` filters for large tables.
@@ -329,6 +330,7 @@ Then verify:
 import fabricpy
 
 print(fabricpy.__file__)
+print(fabricpy.__version__)
 print(hasattr(fabricpy, "connect_to_fabric_sql"))
 ```
 
@@ -367,7 +369,7 @@ Ask the admin to confirm the service principal has read access to the required F
 
 ### HTTP 401 From `FabricLakehouse.list_tables()`
 
-That is the older OneLake delegated-token path. For personal-laptop Key Vault + service-principal access, use `connect_to_fabric_sql()`.
+That is the older OneLake delegated-token path. For personal-laptop Key Vault + service-principal access, use `connect_to_fabric_sql(auth="sp_vault")`.
 
 ### A Table Name Fails
 

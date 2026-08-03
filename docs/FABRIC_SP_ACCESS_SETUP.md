@@ -63,12 +63,12 @@ python3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-
 python3 -c "from fabricpy import connect_to_fabric_sql; print('fabricpy SP SQL import OK')"
 ```
 
-Then connect. Call `connect_to_fabric_sql()` once, run all reads/queries with that same `conn`, then close it with `conn.close()`. Do not reconnect for each query, because that can trigger repeated authentication:
+Then connect. Call `connect_to_fabric_sql(auth="sp_vault")` once, run all reads/queries with that same `conn`, then close it with `conn.close()`. Do not reconnect for each query, because that can trigger repeated authentication:
 
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(auth="sp_vault")
 
 print(list_sql_tables(conn))
 
@@ -128,7 +128,7 @@ The repository defaults are stored in `fabricpy/config.json` and `fabriconnect/i
 
 | Problem | Fix |
 |---|---|
-| Sign-in feels slow or repeats | Update the package and use the default browser flow. Do not call `connect_to_fabric_sql()` more than once per script. |
+| Sign-in feels slow or repeats | Update the package and use the default browser flow. Do not call `connect_to_fabric_sql(auth="sp_vault")` more than once per script. |
 | Key Vault login fails | Confirm the researcher is a guest/user in tenant `4fde8ff3-4dd5-42e1-a25a-e42905610d66`, can complete MFA, and has Key Vault RBAC |
 | Key Vault returns forbidden | Confirm the researcher has `Key Vault Secrets User` role on the vault |
 | ODBC driver error | Install Microsoft ODBC Driver 18 for SQL Server |

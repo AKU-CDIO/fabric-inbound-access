@@ -13,4 +13,4 @@ __all__ = [
     "query_sql",
     "read_sql_table",
 ]
-__version__ = "0.1.0"
+__version__ = "0.1.1"

@@ -20,12 +20,12 @@ py -3 -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CD
 
 ## Service Principal SQL Access
 
-Approved researchers can connect from personal laptops through Azure Key Vault. Python opens a browser for Key Vault login when `connect_to_fabric_sql()` is first called. Call it once, reuse the same `conn` for all reads/queries, then close it with `conn.close()`.
+Approved researchers can connect from personal laptops through Azure Key Vault. Python opens a browser for Key Vault login when `connect_to_fabric_sql(auth="sp_vault")` is first called. Call it once, reuse the same `conn` for all reads/queries, then close it with `conn.close()`.
 
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, read_sql_table, query_sql
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(auth="sp_vault")
 print(list_sql_tables(conn))
 df = read_sql_table(conn, "dbo.dimenrolledparticipants", top=10)
 print(df.head())

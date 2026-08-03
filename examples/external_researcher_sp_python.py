@@ -5,12 +5,12 @@ Prerequisites:
   1. Your account has Key Vault Secrets User access on uzima-secrets-xfmh
   2. Install: python -m pip install --user "fabricpy[sqlserver] @ git+https://github.com/AKU-CDIO/fabric-inbound-access.git#subdirectory=fabriconnectpy" --upgrade --no-cache-dir
   3. Install Microsoft ODBC Driver 18 for SQL Server
-  4. This script authenticates once in connect_to_fabric_sql(), reuses conn, then closes it
+  4. This script authenticates once in connect_to_fabric_sql(auth="sp_vault"), reuses conn, then closes it
 """
 
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(auth="sp_vault")
 
 print("Connected via Key Vault service-principal access.\n")
 

@@ -105,7 +105,7 @@ Python usage: authenticate once, reuse the same `conn` for all reads/queries, an
 ```python
 from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql_table
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(auth="sp_vault")
 
 tables = list_sql_tables(conn)
 print(tables[:10])

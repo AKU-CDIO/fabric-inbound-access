@@ -16,7 +16,7 @@ from fabricpy import connect_to_fabric_sql, list_sql_tables, query_sql, read_sql
 print("UZIMA researcher Fabric SQL example starting...", flush=True)
 print("Authenticating once and opening one SQL connection...", flush=True)
 
-conn = connect_to_fabric_sql()
+conn = connect_to_fabric_sql(auth="sp_vault")
 
 tables = list_sql_tables(conn)
 print(f"Found {len(tables)} tables:")
